@@ -6,6 +6,7 @@ const now=()=>new Date().toISOString()
 
 type Cell={starts_at:string;ends_at:string}
 type Mode='free'|'blocked'|'delete'
+type Existing={id:number;starts_at:string;ends_at:string;status:string}
 
 async function admin(request:Request,env:Env){
   const token=readCookie(request,'ps_admin_session'); if(!token)return null
@@ -19,7 +20,7 @@ function validCell(cell:Cell){
   const s=new Date(cell.starts_at),e=new Date(cell.ends_at)
   if(Number.isNaN(s.getTime())||Number.isNaN(e.getTime())||e<=s)return false
   const weekday=s.getUTCDay(),duration=(e.getTime()-s.getTime())/60000
-  return weekday>=1&&weekday<=6&&duration===60
+  return weekday>=1&&weekday<=6&&duration===50
 }
 
 export async function handleAgendaBulk(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -29,34 +30,47 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   const mode=String(body.mode||'') as Mode
   const cells=(Array.isArray(body.cells)?body.cells:[]).slice(0,200).map((c:any)=>({starts_at:String(c.starts_at||''),ends_at:String(c.ends_at||'')})) as Cell[]
   if(!['free','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
-  if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita blocos de 1 hora, de segunda a sábado.'},400)
+  if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita sessões de 50 minutos, de segunda a sábado.'},400)
+
+  const minStart=cells.reduce((a,c)=>c.starts_at<a?c.starts_at:a,cells[0].starts_at)
+  const maxEnd=cells.reduce((a,c)=>c.ends_at>a?c.ends_at:a,cells[0].ends_at)
+  const existingResult=await env.DB.prepare(`SELECT id,starts_at,ends_at,status FROM availability WHERE starts_at < ? AND ends_at > ?`).bind(maxEnd,minStart).all<Existing>()
+  const existing=(existingResult.results||[]) as Existing[]
+  const exactByKey=new Map(existing.map(s=>[`${s.starts_at}|${s.ends_at}`,s]))
 
   const hasAppointments=await tableExists(env,'appointments')
-  let changed=0,skipped=0
+  const protectedIds=new Set<number>()
+  if(hasAppointments&&existing.length){
+    const ids=existing.map(s=>s.id)
+    const placeholders=ids.map(()=>'?').join(',')
+    const linked=await env.DB.prepare(`SELECT availability_id FROM appointments WHERE availability_id IN (${placeholders}) AND status IN ('pending_payment','confirmed')`).bind(...ids).all<any>()
+    for(const row of linked.results||[])protectedIds.add(Number(row.availability_id))
+  }
+
+  const statements:any[]=[]
+  const changedCells:Cell[]=[]
+  let skipped=0
+
   for(const cell of cells){
-    const exact=await env.DB.prepare(`SELECT id,status FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>()
-    const overlap=exact?null:await env.DB.prepare(`SELECT id,status,starts_at,ends_at FROM availability WHERE starts_at < ? AND ends_at > ? LIMIT 1`).bind(cell.ends_at,cell.starts_at).first<any>()
+    const key=`${cell.starts_at}|${cell.ends_at}`
+    const exact=exactByKey.get(key)
+    const overlap=exact?null:existing.find(s=>s.starts_at<cell.ends_at&&s.ends_at>cell.starts_at)
 
     if(mode==='delete'){
-      if(!exact){skipped++;continue}
-      if(['held','confirmed'].includes(String(exact.status))){skipped++;continue}
-      if(hasAppointments){
-        const linked=await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? AND status IN ('pending_payment','confirmed') LIMIT 1`).bind(exact.id).first<any>()
-        if(linked){skipped++;continue}
-      }
-      await env.DB.prepare('DELETE FROM availability WHERE id=?').bind(exact.id).run();changed++;continue
+      if(!exact||['held','confirmed'].includes(String(exact.status))||protectedIds.has(exact.id)){skipped++;continue}
+      statements.push(env.DB.prepare('DELETE FROM availability WHERE id=?').bind(exact.id));changedCells.push(cell);exactByKey.delete(key);continue
     }
 
     if(overlap){skipped++;continue}
     if(exact){
-      if(['held','confirmed'].includes(String(exact.status))){skipped++;continue}
-      await env.DB.prepare(`UPDATE availability SET status=?,public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-        .bind(mode==='free'?'free':'blocked',exact.id).run();changed++
+      if(['held','confirmed'].includes(String(exact.status))||protectedIds.has(exact.id)){skipped++;continue}
+      statements.push(env.DB.prepare(`UPDATE availability SET status=?,public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(mode,exact.id));changedCells.push(cell)
     }else{
-      await env.DB.prepare(`INSERT INTO availability (starts_at,ends_at,status,public_visibility,source) VALUES (?,?,?,'visible','manual')`)
-        .bind(cell.starts_at,cell.ends_at,mode==='free'?'free':'blocked').run();changed++
+      statements.push(env.DB.prepare(`INSERT INTO availability (starts_at,ends_at,status,public_visibility,source) VALUES (?,?,?,'visible','manual')`).bind(cell.starts_at,cell.ends_at,mode));changedCells.push(cell)
     }
   }
 
-  return json({ok:true,changed,skipped,message:skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou consulta confirmada.`:`${changed} horário(s) alterado(s).`})
+  if(statements.length)await env.DB.batch(statements)
+  const changed=changedCells.length
+  return json({ok:true,changed,skipped,changed_cells:changedCells,message:skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou consulta confirmada.`:`${changed} horário(s) alterado(s).`})
 }
