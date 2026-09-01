@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
