@@ -6,6 +6,7 @@ import { handlePaymentsV2 } from './payments-v2'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
+import { handleAgendaDelete } from './agenda-delete'
 import { ensureAgendaSchema } from './agenda-schema'
 import type { Env } from './types'
 
@@ -40,6 +41,11 @@ export default {
 
         if (path === '/api/admin/availability' && request.method === 'POST') {
           const response = await handleAgendaCreate(request, env, path)
+          if (response) return response
+        }
+
+        if (/^\/api\/admin\/availability\/\d+$/.test(path) && request.method === 'DELETE') {
+          const response = await handleAgendaDelete(request, env, path)
           if (response) return response
         }
 
