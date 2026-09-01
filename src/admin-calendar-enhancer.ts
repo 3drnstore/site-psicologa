@@ -1,65 +1,104 @@
 type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string }
-type ViewMode = 'month'|'week'|'day'
+type Cell = { starts_at:string; ends_at:string; day:Date; hour:number; slot?:Slot }
+type ViewMode='week'|'day'
 
 const fmtTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const fmtDate=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v))
-const startOfDay=(d:Date)=>new Date(d.getFullYear(),d.getMonth(),d.getDate())
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
-const statusLabel=(s:Slot)=>s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?(s.source==='recurring_block'?'Bloqueio recorrente':'Bloqueado'):(s.public_visibility==='hidden'?'Oculto':'Livre')
-const statusClass=(s:Slot)=>s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.public_visibility==='hidden'?'hidden':'free'
+const mondayOf=(d:Date)=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDay();x.setDate(x.getDate()-(day===0?6:day-1));return x}
+const localDayKey=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?'Ocupado':s.public_visibility==='hidden'?'Oculto':'Livre'
+const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.public_visibility==='hidden'?'hidden':'free'
+const exactHourSlot=(s:Slot)=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);return st.getDay()>=1&&st.getDay()<=6&&st.getHours()>=8&&st.getHours()<19&&st.getMinutes()===0&&(en.getTime()-st.getTime())===3600000}
 
 class AdminCalendar {
-  host:HTMLElement; cursor=new Date(); mode:ViewMode='month'; slots:Slot[]=[]; selected:Slot|null=null
+  host:HTMLElement;cursor=new Date();mode:ViewMode='week';slots:Slot[]=[];selected=new Set<string>();notice=''
   constructor(host:HTMLElement){this.host=host}
+
   async load(){
-    const from=new Date(this.cursor.getFullYear()-1,0,1);const to=new Date(this.cursor.getFullYear()+3,11,31,23,59,59)
+    const start=mondayOf(this.cursor),from=addDays(start,-7),to=addDays(start,21);to.setHours(23,59,59,999)
     const r=await fetch(`/api/admin/availability-v2?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{credentials:'include'})
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||'Não foi possível carregar a agenda.')
     this.slots=d.slots||[];this.render()
   }
-  async action(slot:Slot,action:'blocked'|'free'|'hidden'|'visible'|'delete'){
-    if(action==='delete'){
-      if(!confirm('Excluir este horário da agenda?'))return
-      const r=await fetch(`/api/admin/availability/${slot.id}`,{method:'DELETE',credentials:'include'})
-      const d=await r.json().catch(()=>({}));if(!r.ok){alert(d.message||'Não foi possível excluir.');return}
-    }else{
-      const r=await fetch(`/api/admin/availability/${slot.id}/mode`,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mode:action})})
-      const d=await r.json().catch(()=>({}));if(!r.ok){alert(d.message||'Não foi possível alterar o horário.');return}
+
+  days(){
+    if(this.mode==='day'){
+      let d=new Date(this.cursor);if(d.getDay()===0)d=addDays(d,1);return [d]
     }
-    this.selected=null;await this.load()
+    const m=mondayOf(this.cursor);return Array.from({length:6},(_,i)=>addDays(m,i))
   }
+
+  cell(day:Date,hour:number):Cell{
+    const start=new Date(day.getFullYear(),day.getMonth(),day.getDate(),hour,0,0,0),end=new Date(start);end.setHours(end.getHours()+1)
+    const slot=this.slots.find(s=>Math.abs(new Date(s.starts_at).getTime()-start.getTime())<1000&&Math.abs(new Date(s.ends_at).getTime()-end.getTime())<1000)
+    return {starts_at:start.toISOString(),ends_at:end.toISOString(),day,hour,slot}
+  }
+
+  key(c:Cell){return `${c.starts_at}|${c.ends_at}`}
+  toggle(c:Cell){const k=this.key(c);this.selected.has(k)?this.selected.delete(k):this.selected.add(k);this.render()}
+  selectedCells(){const all=this.days().flatMap(d=>Array.from({length:11},(_,i)=>this.cell(d,8+i)));return all.filter(c=>this.selected.has(this.key(c)))}
+
+  async bulk(mode:'free'|'blocked'|'delete'){
+    const cells=this.selectedCells();if(!cells.length){this.notice='Selecione um ou mais horários primeiro.';this.render();return}
+    if(mode==='delete'&&!confirm(`Excluir ${cells.length} horário(s) selecionado(s)?`))return
+    const r=await fetch('/api/admin/availability/bulk',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mode,cells:cells.map(c=>({starts_at:c.starts_at,ends_at:c.ends_at}))})})
+    const d=await r.json().catch(()=>({}));if(!r.ok){this.notice=d.message||'Não foi possível alterar os horários.';this.render();return}
+    this.notice=d.message||'Agenda atualizada.';this.selected.clear();await this.load()
+  }
+
+  async deleteLegacy(slot:Slot){
+    if(!confirm(`Excluir o intervalo ${fmtDate(slot.starts_at)} ${fmtTime(slot.starts_at)} → ${fmtDate(slot.ends_at)} ${fmtTime(slot.ends_at)}?`))return
+    const r=await fetch(`/api/admin/availability/${slot.id}`,{method:'DELETE',credentials:'include'});const d=await r.json().catch(()=>({}))
+    if(!r.ok){this.notice=d.message||'Não foi possível excluir o intervalo.';this.render();return}
+    this.notice='Intervalo excluído.';await this.load()
+  }
+
   title(){
-    if(this.mode==='month')return new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(this.cursor).replace(/^./,c=>c.toUpperCase())
-    if(this.mode==='day')return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(this.cursor).replace(/^./,c=>c.toUpperCase())
-    const base=startOfDay(this.cursor),start=addDays(base,-base.getDay()),end=addDays(start,6)
-    return `${fmtDate(start.toISOString())} – ${fmtDate(end.toISOString())}`
+    if(this.mode==='day')return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(this.days()[0]).replace(/^./,c=>c.toUpperCase())
+    const ds=this.days();return `${fmtDate(ds[0].toISOString())} – ${fmtDate(ds[5].toISOString())}`
   }
-  nav(n:number){if(this.mode==='month')this.cursor=new Date(this.cursor.getFullYear(),this.cursor.getMonth()+n,1);else if(this.mode==='week')this.cursor=addDays(this.cursor,n*7);else this.cursor=addDays(this.cursor,n);this.render()}
+  nav(n:number){this.cursor=addDays(this.cursor,this.mode==='week'?n*7:n);if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,n>=0?1:-1);this.selected.clear();this.load()}
+
   render(){
-    this.host.innerHTML=`<div class="gc-toolbar"><div class="gc-nav"><button data-gc="today">Hoje</button><button data-gc="prev" aria-label="Anterior">‹</button><button data-gc="next" aria-label="Próximo">›</button><strong>${this.title()}</strong></div><div class="gc-modes"><button data-mode="month" class="${this.mode==='month'?'active':''}">Mês</button><button data-mode="week" class="${this.mode==='week'?'active':''}">Semana</button><button data-mode="day" class="${this.mode==='day'?'active':''}">Dia</button></div></div><div class="gc-legend"><span class="free">Livre</span><span class="blocked">Bloqueado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div><div class="gc-body"></div><div class="gc-detail"></div>`
-    this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();this.render()})
+    const count=this.selected.size
+    this.host.innerHTML=`<div class="gc-toolbar"><div class="gc-nav"><button data-gc="today">Hoje</button><button data-gc="prev">‹</button><button data-gc="next">›</button><strong>${this.title()}</strong></div><div class="gc-modes"><button data-mode="week" class="${this.mode==='week'?'active':''}">Semana</button><button data-mode="day" class="${this.mode==='day'?'active':''}">Dia</button></div></div>
+      <div class="gc-help"><strong>Atendimento: segunda a sábado, 08h–19h.</strong> Clique em um ou vários blocos e escolha o estado. Horários não liberados são considerados ocupados.</div>
+      ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
+      <div class="gc-legend"><span class="free">Livre</span><span class="unset">Ocupado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
+      <div class="gc-selection"><strong>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="blocked">Marcar como ocupado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
+      <div class="gc-body"></div><div class="gc-legacy"></div>`
+    this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,1);this.selected.clear();this.load()})
     this.host.querySelector('[data-gc=prev]')?.addEventListener('click',()=>this.nav(-1));this.host.querySelector('[data-gc=next]')?.addEventListener('click',()=>this.nav(1))
-    this.host.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.addEventListener('click',()=>{this.mode=b.dataset.mode as ViewMode;this.render()}))
-    if(this.mode==='month')this.renderMonth();else this.renderTimeGrid()
-    this.renderDetail()
+    this.host.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.addEventListener('click',()=>{this.mode=b.dataset.mode as ViewMode;this.selected.clear();this.load()}))
+    this.host.querySelectorAll<HTMLElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>this.bulk(b.dataset.bulk as 'free'|'blocked'|'delete')))
+    this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.render()})
+    this.renderGrid();this.renderLegacy()
   }
-  renderMonth(){
-    const body=this.host.querySelector('.gc-body')!;const first=new Date(this.cursor.getFullYear(),this.cursor.getMonth(),1);const gridStart=addDays(first,-first.getDay())
-    const days=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];body.innerHTML=`<div class="gc-weekdays">${days.map(d=>`<span>${d}</span>`).join('')}</div><div class="gc-month-grid"></div>`
-    const grid=body.querySelector('.gc-month-grid')!;for(let i=0;i<42;i++){const day=addDays(gridStart,i);const ds=day.toDateString();const events=this.slots.filter(s=>new Date(s.starts_at).toDateString()===ds);const outside=day.getMonth()!==this.cursor.getMonth();const cell=document.createElement('div');cell.className=`gc-day ${outside?'outside':''}`;cell.innerHTML=`<div class="gc-daynum">${day.getDate()}</div><div class="gc-events"></div>`;const ev=cell.querySelector('.gc-events')!;events.slice(0,4).forEach(s=>{const b=document.createElement('button');b.className=`gc-event ${statusClass(s)}`;b.textContent=`${fmtTime(s.starts_at)} ${statusLabel(s)}`;b.title=`${fmtDate(s.starts_at)} ${fmtTime(s.starts_at)} → ${fmtDate(s.ends_at)} ${fmtTime(s.ends_at)}`;b.onclick=()=>{this.selected=s;this.renderDetail()};ev.appendChild(b)});if(events.length>4){const m=document.createElement('small');m.textContent=`+${events.length-4} mais`;ev.appendChild(m)}grid.appendChild(cell)}
+
+  renderGrid(){
+    const body=this.host.querySelector('.gc-body')!,days=this.days()
+    body.innerHTML=`<div class="work-grid" style="--days:${days.length}"><div class="work-corner"></div>${days.map(d=>`<div class="work-day"><strong>${new Intl.DateTimeFormat('pt-BR',{weekday:'short'}).format(d)}</strong><span>${new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(d)}</span></div>`).join('')}${Array.from({length:11},(_,i)=>{const h=8+i;return `<div class="work-hour">${String(h).padStart(2,'0')}:00</div>${days.map(d=>{const c=this.cell(d,h),selected=this.selected.has(this.key(c));return `<button class="work-cell ${statusClass(c.slot)} ${selected?'selected':''}" data-cell="${this.key(c)}"><span>${statusLabel(c.slot)}</span></button>`}).join('')}`}).join('')}</div>`
+    body.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const [starts_at,ends_at]=String(el.dataset.cell).split('|');const c=this.days().flatMap(d=>Array.from({length:11},(_,i)=>this.cell(d,8+i))).find(x=>x.starts_at===starts_at&&x.ends_at===ends_at);if(c)el.addEventListener('click',()=>this.toggle(c))})
   }
-  renderTimeGrid(){
-    const body=this.host.querySelector('.gc-body')!;const base=startOfDay(this.cursor);const start=this.mode==='week'?addDays(base,-base.getDay()):base;const count=this.mode==='week'?7:1;const days=Array.from({length:count},(_,i)=>addDays(start,i))
-    body.innerHTML=`<div class="gc-time-head">${days.map(d=>`<div>${new Intl.DateTimeFormat('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'}).format(d)}</div>`).join('')}</div><div class="gc-time-wrap"><div class="gc-hours">${Array.from({length:24},(_,h)=>`<span>${String(h).padStart(2,'0')}:00</span>`).join('')}</div><div class="gc-time-cols">${days.map(d=>`<div class="gc-time-col" data-day="${d.toDateString()}"></div>`).join('')}</div></div>`
-    const head=body.querySelector<HTMLElement>('.gc-time-head')!,cols=body.querySelector<HTMLElement>('.gc-time-cols')!;head.style.gridTemplateColumns=`repeat(${count},1fr)`;cols.style.gridTemplateColumns=`repeat(${count},minmax(${count===1?'360px':'100px'},1fr))`;if(count===1){head.style.minWidth='0';cols.style.minWidth='0'}
-    days.forEach(d=>{const col=body.querySelector<HTMLElement>(`.gc-time-col[data-day="${d.toDateString()}"]`)!;this.slots.filter(s=>new Date(s.starts_at).toDateString()===d.toDateString()).forEach(s=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);const top=st.getHours()*60+st.getMinutes();const dur=Math.max(28,(en.getTime()-st.getTime())/60000);const b=document.createElement('button');b.className=`gc-time-event ${statusClass(s)}`;b.style.top=`${top}px`;b.style.height=`${Math.min(dur,1440-top)}px`;b.innerHTML=`<strong>${fmtTime(s.starts_at)}–${fmtTime(s.ends_at)}</strong><span>${statusLabel(s)}</span>`;b.onclick=()=>{this.selected=s;this.renderDetail()};col.appendChild(b)})})
-  }
-  renderDetail(){
-    const el=this.host.querySelector('.gc-detail') as HTMLElement;if(!el)return;if(!this.selected){el.innerHTML='<span>Selecione um horário no calendário para gerenciar.</span>';return}const s=this.selected;const locked=['held','confirmed'].includes(s.status);el.innerHTML=`<div><strong>${fmtDate(s.starts_at)} ${fmtTime(s.starts_at)} → ${fmtDate(s.ends_at)} ${fmtTime(s.ends_at)}</strong><span>${statusLabel(s)} • Paciente verá: ${s.public_visibility==='hidden'?'não aparece':s.status==='free'?'Livre':'Ocupado'}</span></div><div class="gc-actions"></div>`;const a=el.querySelector('.gc-actions')!;const add=(label:string,action:any,danger=false)=>{const b=document.createElement('button');b.textContent=label;b.className=danger?'danger':'';b.onclick=()=>this.action(s,action);a.appendChild(b)};if(!locked){if(s.status==='free')add('Bloquear','blocked');if(s.status==='blocked')add('Liberar','free');add(s.public_visibility==='hidden'?'Mostrar':'Ocultar',s.public_visibility==='hidden'?'visible':'hidden');add('Excluir','delete',true)}
+
+  renderLegacy(){
+    const el=this.host.querySelector('.gc-legacy')!,legacy=this.slots.filter(s=>!exactHourSlot(s))
+    if(!legacy.length){el.innerHTML='';return}
+    el.innerHTML=`<h3>Intervalos fora da grade horária</h3><p>Cadastros antigos ou intervalos que não correspondem a blocos de 1 hora aparecem aqui.</p><div class="gc-legacy-list"></div>`
+    const list=el.querySelector('.gc-legacy-list')!;legacy.forEach(s=>{const row=document.createElement('div');row.className='gc-legacy-row';row.innerHTML=`<div><strong>${fmtDate(s.starts_at)} ${fmtTime(s.starts_at)} → ${fmtDate(s.ends_at)} ${fmtTime(s.ends_at)}</strong><span>${statusLabel(s)}</span></div>`;if(!['held','confirmed'].includes(s.status)){const b=document.createElement('button');b.className='danger';b.textContent='Excluir';b.onclick=()=>this.deleteLegacy(s);row.appendChild(b)}list.appendChild(row)})
   }
 }
 
 export function installAdminCalendarEnhancer(){
-  const enhance=()=>document.querySelectorAll<HTMLElement>('.admin-panel').forEach(panel=>{const h=panel.querySelector('h2');if(h?.textContent?.trim()!=='Grade administrativa'||panel.dataset.calendarEnhanced)return;panel.dataset.calendarEnhanced='1';const old=panel.querySelector('.appointment-list');if(old)old.remove();let host=panel.querySelector<HTMLElement>('.google-calendar-admin');if(!host){host=document.createElement('div');host.className='google-calendar-admin';panel.appendChild(host)};const calendar=new AdminCalendar(host);calendar.load().catch(e=>{host!.innerHTML=`<div class="error-box">${e instanceof Error?e.message:String(e)}</div>`})})
+  const enhance=()=>{
+    document.querySelectorAll<HTMLElement>('.admin-panel').forEach(panel=>{
+      const h=panel.querySelector('h2')?.textContent?.trim()
+      if(h==='Novo horário'){panel.style.display='none';return}
+      if(h!=='Grade administrativa'||panel.dataset.calendarEnhanced)return
+      panel.dataset.calendarEnhanced='1';const old=panel.querySelector('.appointment-list');if(old)old.remove();const head=panel.querySelector('.admin-section-head');if(head){const title=head.querySelector('h2');if(title)title.textContent='Agenda semanal';const counter=head.querySelector('span');if(counter)counter.textContent='Selecione os horários diretamente na grade'}
+      let host=panel.querySelector<HTMLElement>('.google-calendar-admin');if(!host){host=document.createElement('div');host.className='google-calendar-admin';panel.appendChild(host)}const calendar=new AdminCalendar(host);calendar.load().catch(e=>{host!.innerHTML=`<div class="error-box">${e instanceof Error?e.message:String(e)}</div>`})
+    })
+  }
   enhance();new MutationObserver(enhance).observe(document.body,{childList:true,subtree:true})
 }
