@@ -6,9 +6,9 @@ const fmtTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute
 const fmtDate=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v))
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
 const mondayOf=(d:Date)=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDay();x.setDate(x.getDate()-(day===0?6:day-1));return x}
-const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?'Ocupado':s.public_visibility==='hidden'?'Oculto':'Livre'
+const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?'Bloqueado':s.public_visibility==='hidden'?'Oculto':'Livre'
 const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.public_visibility==='hidden'?'hidden':'free'
-const exactSessionSlot=(s:Slot)=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);return st.getDay()>=1&&st.getDay()<=6&&st.getHours()>=8&&st.getHours()<19&&st.getMinutes()===0&&(en.getTime()-st.getTime())===3000000}
+const exactSessionSlot=(s:Slot)=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);return st.getDay()>=1&&st.getDay()<=6&&st.getHours()>=8&&st.getHours()<=19&&st.getMinutes()===0&&(en.getTime()-st.getTime())===3000000}
 
 class AdminCalendar {
   host:HTMLElement;cursor=new Date();mode:ViewMode='week';slots:Slot[]=[];selected=new Set<string>();notice='';busy=false;syntheticId=-1
@@ -37,7 +37,7 @@ class AdminCalendar {
   key(c:Cell){return `${c.starts_at}|${c.ends_at}`}
   updateSelectionCount(){const el=this.host.querySelector('[data-selection-count]');if(el)el.textContent=`${this.selected.size} selecionado(s)`}
   toggle(c:Cell,button:HTMLElement){const k=this.key(c);if(this.selected.has(k)){this.selected.delete(k);button.classList.remove('selected')}else{this.selected.add(k);button.classList.add('selected')}this.updateSelectionCount()}
-  selectedCells(){const all=this.days().flatMap(d=>Array.from({length:11},(_,i)=>this.cell(d,8+i)));return all.filter(c=>this.selected.has(this.key(c)))}
+  selectedCells(){const all=this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i)));return all.filter(c=>this.selected.has(this.key(c)))}
 
   applyLocal(mode:'free'|'blocked'|'delete',cells:Cell[]){
     for(const c of cells){
@@ -81,10 +81,10 @@ class AdminCalendar {
   render(){
     const count=this.selected.size
     this.host.innerHTML=`<div class="gc-toolbar"><div class="gc-nav"><button data-gc="today">Hoje</button><button data-gc="prev">‹</button><button data-gc="next">›</button><strong>${this.title()}</strong></div><div class="gc-modes"><button data-mode="week" class="${this.mode==='week'?'active':''}">Semana</button><button data-mode="day" class="${this.mode==='day'?'active':''}">Dia</button></div></div>
-      <div class="gc-help"><strong>Atendimento: segunda a sábado, sessões de 50 min.</strong> Horários: 08:00–08:50, 09:00–09:50, ... 18:00–18:50. Clique em um ou vários blocos e escolha o estado.</div>
+      <div class="gc-help"><strong>Atendimento: segunda a sábado, sessões de 50 min.</strong> Horários: 08:00–08:50, 09:00–09:50, ... 19:00–19:50. Clique em um ou vários blocos e escolha o estado.</div>
       ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
-      <div class="gc-legend"><span class="free">Livre</span><span class="unset">Ocupado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
-      <div class="gc-selection"><strong data-selection-count>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="blocked">Marcar como ocupado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
+      <div class="gc-legend"><span class="free">Livre</span><span class="blocked">Bloqueado</span><span class="unset">Ocupado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
+      <div class="gc-selection"><strong data-selection-count>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="blocked">Marcar como bloqueado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
       <div class="gc-body"></div><div class="gc-legacy"></div>`
     this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,1);this.selected.clear();this.load()})
     this.host.querySelector('[data-gc=prev]')?.addEventListener('click',()=>this.nav(-1));this.host.querySelector('[data-gc=next]')?.addEventListener('click',()=>this.nav(1))
@@ -96,8 +96,8 @@ class AdminCalendar {
 
   renderGrid(){
     const body=this.host.querySelector('.gc-body')!,days=this.days()
-    body.innerHTML=`<div class="work-grid" style="--days:${days.length}"><div class="work-corner"></div>${days.map(d=>`<div class="work-day"><strong>${new Intl.DateTimeFormat('pt-BR',{weekday:'short'}).format(d)}</strong><span>${new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(d)}</span></div>`).join('')}${Array.from({length:11},(_,i)=>{const h=8+i;return `<div class="work-hour">${String(h).padStart(2,'0')}:00–${String(h).padStart(2,'0')}:50</div>${days.map(d=>{const c=this.cell(d,h),selected=this.selected.has(this.key(c));return `<button class="work-cell ${statusClass(c.slot)} ${selected?'selected':''}" data-cell="${this.key(c)}"><span>${statusLabel(c.slot)}</span></button>`}).join('')}`}).join('')}</div>`
-    const cellMap=new Map(this.days().flatMap(d=>Array.from({length:11},(_,i)=>this.cell(d,8+i))).map(c=>[this.key(c),c]))
+    body.innerHTML=`<div class="work-grid" style="--days:${days.length}"><div class="work-corner"></div>${days.map(d=>`<div class="work-day"><strong>${new Intl.DateTimeFormat('pt-BR',{weekday:'short'}).format(d)}</strong><span>${new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(d)}</span></div>`).join('')}${Array.from({length:12},(_,i)=>{const h=8+i;return `<div class="work-hour">${String(h).padStart(2,'0')}:00–${String(h).padStart(2,'0')}:50</div>${days.map(d=>{const c=this.cell(d,h),selected=this.selected.has(this.key(c));return `<button class="work-cell ${statusClass(c.slot)} ${selected?'selected':''}" data-cell="${this.key(c)}"><span>${statusLabel(c.slot)}</span></button>`}).join('')}`}).join('')}</div>`
+    const cellMap=new Map(this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i))).map(c=>[this.key(c),c]))
     body.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=cellMap.get(String(el.dataset.cell));if(c)el.addEventListener('click',()=>this.toggle(c,el))})
   }
 
