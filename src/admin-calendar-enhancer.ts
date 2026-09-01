@@ -1,13 +1,14 @@
 type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string }
 type Cell = { starts_at:string; ends_at:string; day:Date; hour:number; slot?:Slot }
 type ViewMode='week'|'day'
+type BulkMode='free'|'occupied'|'blocked'|'delete'
 
 const fmtTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const fmtDate=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v))
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
 const mondayOf=(d:Date)=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDay();x.setDate(x.getDate()-(day===0?6:day-1));return x}
-const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?'Bloqueado':s.public_visibility==='hidden'?'Oculto':'Livre'
-const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.public_visibility==='hidden'?'hidden':'free'
+const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Aguardando pagamento':s.status==='blocked'?'Bloqueado':s.status==='occupied'?'Ocupado':s.public_visibility==='hidden'?'Oculto':'Livre'
+const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.status==='occupied'?'occupied':s.public_visibility==='hidden'?'hidden':'free'
 const exactSessionSlot=(s:Slot)=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);return st.getDay()>=1&&st.getDay()<=6&&st.getHours()>=8&&st.getHours()<=19&&st.getMinutes()===0&&(en.getTime()-st.getTime())===3000000}
 
 class AdminCalendar {
@@ -39,7 +40,7 @@ class AdminCalendar {
   toggle(c:Cell,button:HTMLElement){const k=this.key(c);if(this.selected.has(k)){this.selected.delete(k);button.classList.remove('selected')}else{this.selected.add(k);button.classList.add('selected')}this.updateSelectionCount()}
   selectedCells(){const all=this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i)));return all.filter(c=>this.selected.has(this.key(c)))}
 
-  applyLocal(mode:'free'|'blocked'|'delete',cells:Cell[]){
+  applyLocal(mode:BulkMode,cells:Cell[]){
     for(const c of cells){
       const idx=this.slots.findIndex(s=>Math.abs(new Date(s.starts_at).getTime()-new Date(c.starts_at).getTime())<1000&&Math.abs(new Date(s.ends_at).getTime()-new Date(c.ends_at).getTime())<1000)
       if(mode==='delete'){if(idx>=0)this.slots.splice(idx,1);continue}
@@ -48,7 +49,7 @@ class AdminCalendar {
     }
   }
 
-  async bulk(mode:'free'|'blocked'|'delete'){
+  async bulk(mode:BulkMode){
     if(this.busy)return
     const cells=this.selectedCells();if(!cells.length){this.notice='Selecione um ou mais horários primeiro.';this.renderNotice();return}
     if(mode==='delete'&&!confirm(`Excluir ${cells.length} horário(s) selecionado(s)?`))return
@@ -83,13 +84,13 @@ class AdminCalendar {
     this.host.innerHTML=`<div class="gc-toolbar"><div class="gc-nav"><button data-gc="today">Hoje</button><button data-gc="prev">‹</button><button data-gc="next">›</button><strong>${this.title()}</strong></div><div class="gc-modes"><button data-mode="week" class="${this.mode==='week'?'active':''}">Semana</button><button data-mode="day" class="${this.mode==='day'?'active':''}">Dia</button></div></div>
       <div class="gc-help"><strong>Atendimento: segunda a sábado, sessões de 50 min.</strong> Horários: 08:00–08:50, 09:00–09:50, ... 19:00–19:50. Clique em um ou vários blocos e escolha o estado.</div>
       ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
-      <div class="gc-legend"><span class="free">Livre</span><span class="blocked">Bloqueado</span><span class="unset">Ocupado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
-      <div class="gc-selection"><strong data-selection-count>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="blocked">Marcar como bloqueado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
+      <div class="gc-legend"><span class="free">Livre</span><span class="occupied">Ocupado</span><span class="blocked">Bloqueado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
+      <div class="gc-selection"><strong data-selection-count>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="occupied">Marcar como ocupado</button><button data-bulk="blocked">Marcar como bloqueado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
       <div class="gc-body"></div><div class="gc-legacy"></div>`
     this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,1);this.selected.clear();this.load()})
     this.host.querySelector('[data-gc=prev]')?.addEventListener('click',()=>this.nav(-1));this.host.querySelector('[data-gc=next]')?.addEventListener('click',()=>this.nav(1))
     this.host.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.addEventListener('click',()=>{this.mode=b.dataset.mode as ViewMode;this.selected.clear();this.load()}))
-    this.host.querySelectorAll<HTMLElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>this.bulk(b.dataset.bulk as 'free'|'blocked'|'delete')))
+    this.host.querySelectorAll<HTMLElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>this.bulk(b.dataset.bulk as BulkMode)))
     this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.host.querySelectorAll('.work-cell.selected').forEach(el=>el.classList.remove('selected'));this.updateSelectionCount()})
     this.renderGrid();this.renderLegacy()
   }
