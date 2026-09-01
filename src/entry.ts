@@ -4,6 +4,7 @@ import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
 import { handleAdminSetup } from './admin-setup'
+import { handleAuthV2 } from './auth-v2'
 import type { Env } from './types'
 
 export default {
@@ -11,13 +12,15 @@ export default {
     const url = new URL(request.url)
     const path = url.pathname
 
-    // O primeiro administrador não deve depender da inicialização completa
-    // de agenda, pagamentos ou prontuário. Isso permite recuperar/configurar
-    // o acesso profissional mesmo se outra migration estiver com problema.
     if (path === '/api/admin/setup' || path === '/api/admin/setup-status') {
       const response = await handleAdminSetup(request, env)
       if (response) return response
     }
+
+    // Login profissional e recuperação de senha não dependem do schema completo
+    // da agenda/prontuário. Isso mantém o acesso recuperável mesmo durante migrations.
+    const authV2 = await handleAuthV2(request, env, path)
+    if (authV2) return authV2
 
     if (path.startsWith('/api/')) await ensureSchema(env)
 
