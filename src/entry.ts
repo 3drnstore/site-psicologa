@@ -10,12 +10,16 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
-    if (path.startsWith('/api/')) await ensureSchema(env)
 
+    // O primeiro administrador não deve depender da inicialização completa
+    // de agenda, pagamentos ou prontuário. Isso permite recuperar/configurar
+    // o acesso profissional mesmo se outra migration estiver com problema.
     if (path === '/api/admin/setup' || path === '/api/admin/setup-status') {
       const response = await handleAdminSetup(request, env)
       if (response) return response
     }
+
+    if (path.startsWith('/api/')) await ensureSchema(env)
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
