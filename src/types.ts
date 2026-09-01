@@ -6,6 +6,9 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string
   GOOGLE_CALENDAR_ID?: string
   GOOGLE_REFRESH_TOKEN?: string
+  SUMUP_API_KEY?: string
+  SUMUP_MERCHANT_CODE?: string
+  INFINITEPAY_HANDLE?: string
   PAYMENT_PROVIDER?: string
   PAYMENT_API_URL?: string
   PAYMENT_API_KEY?: string
