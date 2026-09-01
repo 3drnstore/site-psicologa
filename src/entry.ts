@@ -6,7 +6,13 @@ import { handlePaymentsV2 } from './payments-v2'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
+import { ensureAgendaSchema } from './agenda-schema'
 import type { Env } from './types'
+
+const apiError = (message: string, detail?: string) => new Response(JSON.stringify({ ok: false, message, detail }), {
+  status: 500,
+  headers: { 'content-type': 'application/json; charset=utf-8' },
+})
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -21,17 +27,29 @@ export default {
     const authV2 = await handleAuthV2(request, env, path)
     if (authV2) return authV2
 
-    // As rotas da agenda usam somente as tabelas já existentes e ficam isoladas
-    // da migration global. Assim, uma migration de outro módulo não impede
-    // criar, listar, bloquear ou liberar horários.
-    if (path === '/api/admin/availability' && request.method === 'POST') {
-      const response = await handleAgendaCreate(request, env, path)
-      if (response) return response
-    }
+    const isAgendaRoute =
+      (path === '/api/admin/availability' && request.method === 'POST') ||
+      path === '/api/availability' ||
+      path === '/api/admin/availability-v2' ||
+      path.startsWith('/api/admin/recurring-blocks') ||
+      /^\/api\/admin\/availability\/\d+\/mode$/.test(path)
 
-    if (path === '/api/availability' || path === '/api/admin/availability-v2' || path.startsWith('/api/admin/recurring-blocks') || /^\/api\/admin\/availability\/\d+\/mode$/.test(path)) {
-      const response = await handleScheduleV2(request, env, path)
-      if (response) return response
+    if (isAgendaRoute) {
+      try {
+        await ensureAgendaSchema(env)
+
+        if (path === '/api/admin/availability' && request.method === 'POST') {
+          const response = await handleAgendaCreate(request, env, path)
+          if (response) return response
+        }
+
+        const response = await handleScheduleV2(request, env, path)
+        if (response) return response
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        console.error('Agenda API error:', detail)
+        return apiError('Erro interno da Agenda. O sistema já identificou a causa técnica.', detail)
+      }
     }
 
     if (path.startsWith('/api/')) await ensureSchema(env)
