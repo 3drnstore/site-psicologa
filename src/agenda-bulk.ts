@@ -16,8 +16,9 @@ async function admin(request:Request,env:Env){
 function validCell(cell:Cell){
   const s=new Date(cell.starts_at),e=new Date(cell.ends_at)
   if(Number.isNaN(s.getTime())||Number.isNaN(e.getTime())||e<=s)return false
-  const weekday=s.getDay(),hour=s.getHours()
-  return weekday>=1&&weekday<=6&&hour>=8&&hour<19
+  const weekday=s.getUTCDay()
+  const duration=(e.getTime()-s.getTime())/60000
+  return weekday>=1&&weekday<=6&&duration===60
 }
 
 export async function handleAgendaBulk(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -27,7 +28,7 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   const mode=String(body.mode||'') as Mode
   const cells=(Array.isArray(body.cells)?body.cells:[]).slice(0,200).map((c:any)=>({starts_at:String(c.starts_at||''),ends_at:String(c.ends_at||'')})) as Cell[]
   if(!['free','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
-  if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade de atendimento aceita somente segunda a sábado, entre 08:00 e 19:00.'},400)
+  if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita blocos de 1 hora, de segunda a sábado.'},400)
 
   let changed=0,skipped=0
   for(const cell of cells){
@@ -42,10 +43,7 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
       await env.DB.prepare('DELETE FROM availability WHERE id=?').bind(exact.id).run();changed++;continue
     }
 
-    if(overlap){
-      // Um intervalo maior existente não é sobrescrito silenciosamente.
-      skipped++;continue
-    }
+    if(overlap){skipped++;continue}
 
     if(exact){
       if(['held','confirmed'].includes(String(exact.status))){skipped++;continue}
