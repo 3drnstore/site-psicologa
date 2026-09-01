@@ -19,7 +19,6 @@ const fmtDateTime=(value:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'sh
 const esc=(value:unknown)=>String(value??'').replace(/[&<>'"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]||ch))
 const appointmentStatus=(a:Appointment)=>a.status==='confirmed'?'Confirmada':a.status==='pending_payment'?'Aguardando pagamento':a.status==='cancelled'?'Cancelada':a.status==='expired'?'Expirada':a.status
 const paymentStatus=(a:Appointment)=>a.paid_at?'Pago':a.status==='pending_payment'?'Aguardando pagamento':'—'
-const paymentMethod=(a:Appointment)=>a.payment_method==='pix'?'Pix':a.payment_method==='credit_card'?'Cartão':a.payment_method||'—'
 
 let scheduled:number|undefined
 let loading=false
@@ -54,7 +53,6 @@ function renderDetail(host:HTMLElement,a:Appointment){
     <div class="gc-appointment-info">
       <span><small>Status</small><strong>${esc(appointmentStatus(a))}</strong></span>
       <span><small>Pagamento</small><strong>${esc(paymentStatus(a))}</strong></span>
-      <span><small>Forma</small><strong>${esc(paymentMethod(a))}</strong></span>
       <span><small>Valor</small><strong>${esc(money(Number(a.amount_cents||0)))}</strong></span>
       <span><small>Telefone</small><strong>${esc(a.phone||'—')}</strong></span>
       <span><small>E-mail</small><strong>${esc(a.email||'—')}</strong></span>
