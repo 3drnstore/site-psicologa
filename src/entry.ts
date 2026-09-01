@@ -3,6 +3,7 @@ import { ensureSchema } from './schema'
 import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
+import { handleAdminSetup } from './admin-setup'
 import type { Env } from './types'
 
 export default {
@@ -10,6 +11,11 @@ export default {
     const url = new URL(request.url)
     const path = url.pathname
     if (path.startsWith('/api/')) await ensureSchema(env)
+
+    if (path === '/api/admin/setup' || path === '/api/admin/setup-status') {
+      const response = await handleAdminSetup(request, env)
+      if (response) return response
+    }
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
