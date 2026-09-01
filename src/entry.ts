@@ -21,6 +21,19 @@ export default {
     const authV2 = await handleAuthV2(request, env, path)
     if (authV2) return authV2
 
+    // As rotas da agenda usam somente as tabelas já existentes e ficam isoladas
+    // da migration global. Assim, uma migration de outro módulo não impede
+    // criar, listar, bloquear ou liberar horários.
+    if (path === '/api/admin/availability' && request.method === 'POST') {
+      const response = await handleAgendaCreate(request, env, path)
+      if (response) return response
+    }
+
+    if (path === '/api/availability' || path === '/api/admin/availability-v2' || path.startsWith('/api/admin/recurring-blocks') || /^\/api\/admin\/availability\/\d+\/mode$/.test(path)) {
+      const response = await handleScheduleV2(request, env, path)
+      if (response) return response
+    }
+
     if (path.startsWith('/api/')) await ensureSchema(env)
 
     if (path.startsWith('/api/auth/google/')) {
@@ -30,16 +43,6 @@ export default {
 
     if (path === '/api/payments/checkout' || path.startsWith('/api/payments/webhook/sumup') || path.startsWith('/api/payments/webhook/infinitepay')) {
       const response = await handlePaymentsV2(request, env, path, ctx)
-      if (response) return response
-    }
-
-    if (path === '/api/admin/availability' && request.method === 'POST') {
-      const response = await handleAgendaCreate(request, env, path)
-      if (response) return response
-    }
-
-    if (path === '/api/availability' || path === '/api/admin/availability-v2' || path.startsWith('/api/admin/recurring-blocks') || /^\/api\/admin\/availability\/\d+\/mode$/.test(path)) {
-      const response = await handleScheduleV2(request, env, path)
       if (response) return response
     }
 
