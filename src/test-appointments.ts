@@ -1,0 +1,77 @@
+import { readCookie, sha256 } from './auth'
+import type { Env } from './types'
+
+const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
+const nowIso=()=>new Date().toISOString()
+
+async function admin(request:Request,env:Env){
+  const token=readCookie(request,'ps_admin_session')
+  if(!token)return null
+  return env.DB.prepare(`SELECT a.id FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`)
+    .bind(await sha256(token),nowIso()).first<any>()
+}
+
+function weekdaySaoPaulo(value:string){
+  return new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).format(new Date(value))
+}
+
+export async function handleTestAppointments(request:Request,env:Env,path:string):Promise<Response|null>{
+  if(path!=='/api/admin/test-appointments'||request.method!=='POST')return null
+  const a=await admin(request,env)
+  if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
+
+  const marker=await env.DB.prepare(`SELECT value FROM settings WHERE key='test_seed_appointments_v1'`).first<any>()
+  if(marker?.value==='done')return json({ok:true,already_done:true})
+
+  const from=new Date()
+  from.setHours(0,0,0,0)
+  const to=new Date(from)
+  to.setDate(to.getDate()+14)
+  to.setHours(23,59,59,999)
+
+  const rows=await env.DB.prepare(`
+    SELECT id,starts_at,ends_at,status
+    FROM availability
+    WHERE status='free' AND COALESCE(public_visibility,'visible')='visible'
+      AND starts_at>=? AND starts_at<=?
+    ORDER BY starts_at ASC
+  `).bind(from.toISOString(),to.toISOString()).all<any>()
+
+  const wednesday=(rows.results||[]).filter((r:any)=>weekdaySaoPaulo(r.starts_at)==='Wed')
+  if(wednesday.length<3)return json({ok:false,message:'Não encontrei 3 horários livres na próxima quarta-feira disponível.'},409)
+
+  const firstDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(wednesday[0].starts_at))
+  const slots=wednesday.filter((r:any)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(r.starts_at))===firstDay).slice(0,3)
+  if(slots.length<3)return json({ok:false,message:'A quarta-feira encontrada não possui 3 horários livres no mesmo dia.'},409)
+
+  const priceRow=await env.DB.prepare(`SELECT value FROM settings WHERE key='consultation_price_cents'`).first<any>()
+  const amount=Number(priceRow?.value||0)
+  const stamp=Date.now()
+  const patients=[
+    {name:'Paciente Teste Reserva',email:`teste.reserva.${stamp}@example.invalid`,cpf:`T${stamp}01`,phone:'(00) 00000-0001'},
+    {name:'Paciente Teste Confirmado 1',email:`teste.confirmado1.${stamp}@example.invalid`,cpf:`T${stamp}02`,phone:'(00) 00000-0002'},
+    {name:'Paciente Teste Confirmado 2',email:`teste.confirmado2.${stamp}@example.invalid`,cpf:`T${stamp}03`,phone:'(00) 00000-0003'},
+  ]
+
+  const created:any[]=[]
+  for(let i=0;i<3;i++){
+    const p=patients[i]
+    const pr=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,email_verified) VALUES (?,?,?,?,?,1)`)
+      .bind(p.name,'1990-01-01',p.cpf,p.phone,p.email).run()
+    const patientId=Number(pr.meta.last_row_id)
+    const confirmed=i>0
+    const appointmentStatus=confirmed?'confirmed':'pending_payment'
+    const slotStatus=confirmed?'confirmed':'held'
+    const paidAt=confirmed?nowIso():null
+    const reservedUntil=confirmed?null:new Date(Date.now()+24*60*60*1000).toISOString()
+    const ar=await env.DB.prepare(`
+      INSERT INTO appointments (patient_id,availability_id,status,amount_cents,paid_at,reserved_until)
+      VALUES (?,?,?,?,?,?)
+    `).bind(patientId,slots[i].id,appointmentStatus,amount,paidAt,reservedUntil).run()
+    await env.DB.prepare(`UPDATE availability SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(slotStatus,slots[i].id).run()
+    created.push({appointment_id:Number(ar.meta.last_row_id),patient_id:patientId,availability_id:slots[i].id,status:appointmentStatus,starts_at:slots[i].starts_at})
+  }
+
+  await env.DB.prepare(`INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('test_seed_appointments_v1','done',CURRENT_TIMESTAMP)`).run()
+  return json({ok:true,created,date:firstDay},201)
+}
