@@ -58,7 +58,8 @@ export async function handleGoogleAuth(request: Request, env: Env) {
     const pendingToken = randomToken(24)
     await env.DB.prepare(`INSERT INTO oauth_pending (id, token_hash, google_sub, email, full_name, expires_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(crypto.randomUUID(), await sha256(pendingToken), String(info.sub || ''), email, String(info.name || ''), new Date(Date.now() + 15 * 60_000).toISOString()).run()
-    return new Response(null, { status: 302, headers: { location: `${origin}/?google-profile-required=1&token=${encodeURIComponent(pendingToken)}` } })
+    const qs = new URLSearchParams({ 'google-profile-required': '1', email, name: String(info.name || ''), sub: pendingToken })
+    return new Response(null, { status: 302, headers: { location: `${origin}/?${qs.toString()}` } })
   }
 
   if (url.pathname === '/api/auth/google/pending' && request.method === 'GET') {
@@ -70,7 +71,7 @@ export async function handleGoogleAuth(request: Request, env: Env) {
 
   if (url.pathname === '/api/auth/google/complete' && request.method === 'POST') {
     const data = await request.json().catch(() => ({})) as any
-    const pendingToken = String(data.pending_token || '')
+    const pendingToken = String(data.pending_token || data.google_sub || '')
     const pending = await env.DB.prepare('SELECT * FROM oauth_pending WHERE token_hash = ? AND expires_at > ?').bind(await sha256(pendingToken), new Date().toISOString()).first<any>()
     if (!pending) return json({ ok: false, message: 'Cadastro Google expirado. Inicie novamente.' }, 400)
     const fullName = String(data.full_name || pending.full_name || '').trim()
