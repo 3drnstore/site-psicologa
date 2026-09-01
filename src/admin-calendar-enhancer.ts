@@ -12,7 +12,7 @@ const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.sta
 const exactSessionSlot=(s:Slot)=>{const st=new Date(s.starts_at),en=new Date(s.ends_at);return st.getDay()>=1&&st.getDay()<=6&&st.getHours()>=8&&st.getHours()<=19&&st.getMinutes()===0&&(en.getTime()-st.getTime())===3000000}
 
 class AdminCalendar {
-  host:HTMLElement;cursor=new Date();mode:ViewMode='week';slots:Slot[]=[];selected=new Set<string>();notice='';busy=false;syntheticId=-1
+  host:HTMLElement;cursor=new Date();mode:ViewMode='week';slots:Slot[]=[];selected=new Set<string>();notice='';busy=false;syntheticId=-1;anchorKey:string|null=null
   constructor(host:HTMLElement){this.host=host}
 
   async load(){
@@ -29,6 +29,8 @@ class AdminCalendar {
     const m=mondayOf(this.cursor);return Array.from({length:6},(_,i)=>addDays(m,i))
   }
 
+  allCells(){return this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i)))}
+
   cell(day:Date,hour:number):Cell{
     const start=new Date(day.getFullYear(),day.getMonth(),day.getDate(),hour,0,0,0),end=new Date(start);end.setMinutes(end.getMinutes()+50)
     const slot=this.slots.find(s=>Math.abs(new Date(s.starts_at).getTime()-start.getTime())<1000&&Math.abs(new Date(s.ends_at).getTime()-end.getTime())<1000)
@@ -37,8 +39,31 @@ class AdminCalendar {
 
   key(c:Cell){return `${c.starts_at}|${c.ends_at}`}
   updateSelectionCount(){const el=this.host.querySelector('[data-selection-count]');if(el)el.textContent=`${this.selected.size} selecionado(s)`}
-  toggle(c:Cell,button:HTMLElement){const k=this.key(c);if(this.selected.has(k)){this.selected.delete(k);button.classList.remove('selected')}else{this.selected.add(k);button.classList.add('selected')}this.updateSelectionCount()}
-  selectedCells(){const all=this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i)));return all.filter(c=>this.selected.has(this.key(c)))}
+
+  paintSelection(){
+    this.host.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>el.classList.toggle('selected',this.selected.has(String(el.dataset.cell))))
+    this.updateSelectionCount()
+  }
+
+  toggle(c:Cell,button:HTMLElement,shiftKey=false){
+    const k=this.key(c)
+    if(shiftKey&&this.anchorKey){
+      const cells=this.allCells(),anchor=cells.find(x=>this.key(x)===this.anchorKey)
+      if(anchor){
+        const days=this.days(),anchorDay=days.findIndex(d=>d.toDateString()===anchor.day.toDateString()),targetDay=days.findIndex(d=>d.toDateString()===c.day.toDateString())
+        const minDay=Math.min(anchorDay,targetDay),maxDay=Math.max(anchorDay,targetDay),minHour=Math.min(anchor.hour,c.hour),maxHour=Math.max(anchor.hour,c.hour)
+        for(const cell of cells){
+          const dayIndex=days.findIndex(d=>d.toDateString()===cell.day.toDateString())
+          if(dayIndex>=minDay&&dayIndex<=maxDay&&cell.hour>=minHour&&cell.hour<=maxHour)this.selected.add(this.key(cell))
+        }
+        this.paintSelection();return
+      }
+    }
+    if(this.selected.has(k)){this.selected.delete(k);button.classList.remove('selected')}else{this.selected.add(k);button.classList.add('selected')}
+    this.anchorKey=k;this.updateSelectionCount()
+  }
+
+  selectedCells(){return this.allCells().filter(c=>this.selected.has(this.key(c)))}
 
   applyLocal(mode:BulkMode,cells:Cell[]){
     for(const c of cells){
@@ -60,7 +85,7 @@ class AdminCalendar {
     const changedKeys=new Set((d.changed_cells||[]).map((c:any)=>`${c.starts_at}|${c.ends_at}`))
     const changed=cells.filter(c=>changedKeys.has(this.key(c)))
     this.applyLocal(mode,changed)
-    this.notice=d.message||'Agenda atualizada.';this.selected.clear();this.busy=false;this.render()
+    this.notice=d.message||'Agenda atualizada.';this.selected.clear();this.anchorKey=null;this.busy=false;this.render()
   }
 
   setBulkDisabled(value:boolean){this.host.querySelectorAll<HTMLButtonElement>('[data-bulk]').forEach(b=>b.disabled=value)}
@@ -77,29 +102,29 @@ class AdminCalendar {
     if(this.mode==='day')return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(this.days()[0]).replace(/^./,c=>c.toUpperCase())
     const ds=this.days();return `${fmtDate(ds[0].toISOString())} – ${fmtDate(ds[5].toISOString())}`
   }
-  nav(n:number){this.cursor=addDays(this.cursor,this.mode==='week'?n*7:n);if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,n>=0?1:-1);this.selected.clear();this.load()}
+  nav(n:number){this.cursor=addDays(this.cursor,this.mode==='week'?n*7:n);if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,n>=0?1:-1);this.selected.clear();this.anchorKey=null;this.load()}
 
   render(){
     const count=this.selected.size
     this.host.innerHTML=`<div class="gc-toolbar"><div class="gc-nav"><button data-gc="today">Hoje</button><button data-gc="prev">‹</button><button data-gc="next">›</button><strong>${this.title()}</strong></div><div class="gc-modes"><button data-mode="week" class="${this.mode==='week'?'active':''}">Semana</button><button data-mode="day" class="${this.mode==='day'?'active':''}">Dia</button></div></div>
-      <div class="gc-help"><strong>Atendimento: segunda a sábado, sessões de 50 min.</strong> Horários: 08:00–08:50, 09:00–09:50, ... 19:00–19:50. Clique em um ou vários blocos e escolha o estado.</div>
+      <div class="gc-help"><strong>Atendimento: segunda a sábado, sessões de 50 min.</strong> Horários: 08:00–08:50, 09:00–09:50, ... 19:00–19:50. Clique para selecionar individualmente ou use <strong>Shift + clique</strong> para selecionar uma faixa de horários/dias.</div>
       ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
       <div class="gc-legend"><span class="free">Livre</span><span class="occupied">Ocupado</span><span class="blocked">Bloqueado</span><span class="held">Reserva</span><span class="confirmed">Confirmada</span><span class="hidden">Oculto</span></div>
       <div class="gc-selection"><strong data-selection-count>${count} selecionado(s)</strong><div><button data-bulk="free">Marcar como livre</button><button data-bulk="occupied">Marcar como ocupado</button><button data-bulk="blocked">Marcar como bloqueado</button><button data-bulk="delete" class="danger">Excluir cadastro</button><button data-clear>Limpar seleção</button></div></div>
       <div class="gc-body"></div><div class="gc-legacy"></div>`
-    this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,1);this.selected.clear();this.load()})
+    this.host.querySelector('[data-gc=today]')?.addEventListener('click',()=>{this.cursor=new Date();if(this.cursor.getDay()===0)this.cursor=addDays(this.cursor,1);this.selected.clear();this.anchorKey=null;this.load()})
     this.host.querySelector('[data-gc=prev]')?.addEventListener('click',()=>this.nav(-1));this.host.querySelector('[data-gc=next]')?.addEventListener('click',()=>this.nav(1))
-    this.host.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.addEventListener('click',()=>{this.mode=b.dataset.mode as ViewMode;this.selected.clear();this.load()}))
+    this.host.querySelectorAll<HTMLElement>('[data-mode]').forEach(b=>b.addEventListener('click',()=>{this.mode=b.dataset.mode as ViewMode;this.selected.clear();this.anchorKey=null;this.load()}))
     this.host.querySelectorAll<HTMLElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>this.bulk(b.dataset.bulk as BulkMode)))
-    this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.host.querySelectorAll('.work-cell.selected').forEach(el=>el.classList.remove('selected'));this.updateSelectionCount()})
+    this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.anchorKey=null;this.host.querySelectorAll('.work-cell.selected').forEach(el=>el.classList.remove('selected'));this.updateSelectionCount()})
     this.renderGrid();this.renderLegacy()
   }
 
   renderGrid(){
     const body=this.host.querySelector('.gc-body')!,days=this.days()
     body.innerHTML=`<div class="work-grid" style="--days:${days.length}"><div class="work-corner"></div>${days.map(d=>`<div class="work-day"><strong>${new Intl.DateTimeFormat('pt-BR',{weekday:'short'}).format(d)}</strong><span>${new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(d)}</span></div>`).join('')}${Array.from({length:12},(_,i)=>{const h=8+i;return `<div class="work-hour">${String(h).padStart(2,'0')}:00–${String(h).padStart(2,'0')}:50</div>${days.map(d=>{const c=this.cell(d,h),selected=this.selected.has(this.key(c));return `<button class="work-cell ${statusClass(c.slot)} ${selected?'selected':''}" data-cell="${this.key(c)}"><span>${statusLabel(c.slot)}</span></button>`}).join('')}`}).join('')}</div>`
-    const cellMap=new Map(this.days().flatMap(d=>Array.from({length:12},(_,i)=>this.cell(d,8+i))).map(c=>[this.key(c),c]))
-    body.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=cellMap.get(String(el.dataset.cell));if(c)el.addEventListener('click',()=>this.toggle(c,el))})
+    const cellMap=new Map(this.allCells().map(c=>[this.key(c),c]))
+    body.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=cellMap.get(String(el.dataset.cell));if(c)el.addEventListener('click',(event)=>this.toggle(c,el,(event as MouseEvent).shiftKey))})
   }
 
   renderLegacy(){
