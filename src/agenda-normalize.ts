@@ -9,8 +9,8 @@ function isStandardSession(startsAt: string, endsAt: string) {
   const end = new Date(endsAt)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
   const duration = (end.getTime() - start.getTime()) / 60000
-  const weekday = start.getDay()
-  return weekday >= 1 && weekday <= 6 && start.getHours() >= 8 && start.getHours() <= 18 && start.getMinutes() === 0 && duration === 50
+  const weekday = start.getUTCDay()
+  return weekday >= 1 && weekday <= 6 && start.getUTCMinutes() === 0 && duration === 50
 }
 
 export async function cleanupLegacyAgenda(env: Env) {
