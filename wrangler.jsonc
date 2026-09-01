@@ -3,6 +3,9 @@
   "name": "site-psicologa",
   "main": "src/entry.ts",
   "compatibility_date": "2026-09-01",
+  "vars": {
+    "APP_ORIGIN": "https://site-psicologa.thiagodrn2.workers.dev"
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
