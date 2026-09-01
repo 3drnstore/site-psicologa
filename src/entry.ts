@@ -7,6 +7,7 @@ import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
+import { handleAgendaBulk } from './agenda-bulk'
 import { ensureAgendaSchema } from './agenda-schema'
 import type { Env } from './types'
 
@@ -30,6 +31,7 @@ export default {
 
     const isAgendaRoute =
       (path === '/api/admin/availability' && request.method === 'POST') ||
+      path === '/api/admin/availability/bulk' ||
       path === '/api/availability' ||
       path === '/api/admin/availability-v2' ||
       path.startsWith('/api/admin/recurring-blocks') ||
@@ -41,6 +43,11 @@ export default {
 
         if (path === '/api/admin/availability' && request.method === 'POST') {
           const response = await handleAgendaCreate(request, env, path)
+          if (response) return response
+        }
+
+        if (path === '/api/admin/availability/bulk' && request.method === 'POST') {
+          const response = await handleAgendaBulk(request, env, path)
           if (response) return response
         }
 
