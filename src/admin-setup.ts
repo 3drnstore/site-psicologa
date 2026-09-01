@@ -3,33 +3,59 @@ import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
+async function ensureAdminSchema(env: Env) {
+  await env.DB.exec(`
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'psychologist' CHECK (role IN ('psychologist','assistant')),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+}
+
 export async function handleAdminSetup(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url)
 
   if (url.pathname === '/api/admin/setup-status' && request.method === 'GET') {
-    const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
-    return json({ ok: true, configured: Number(row?.count || 0) > 0 })
+    try {
+      await ensureAdminSchema(env)
+      const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
+      return json({ ok: true, configured: Number(row?.count || 0) > 0 })
+    } catch (error) {
+      return json({ ok: false, message: error instanceof Error ? error.message : 'Falha ao verificar o administrador.' }, 500)
+    }
   }
 
   if (url.pathname === '/api/admin/setup' && request.method === 'POST') {
-    const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
-    if (Number(count?.count || 0) > 0) return json({ ok: false, message: 'O administrador inicial já foi configurado.' }, 409)
-    if (!env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'A chave ADMIN_SETUP_TOKEN ainda não foi configurada na Cloudflare.' }, 503)
-    const supplied = request.headers.get('x-setup-token') || ''
-    if (supplied !== env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'Chave de configuração inválida.' }, 403)
+    try {
+      await ensureAdminSchema(env)
+      const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
+      if (Number(count?.count || 0) > 0) return json({ ok: false, message: 'O administrador inicial já foi configurado.' }, 409)
+      if (!env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'A chave ADMIN_SETUP_TOKEN ainda não foi configurada na Cloudflare.' }, 503)
+      const supplied = request.headers.get('x-setup-token') || ''
+      if (supplied !== env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'Chave de configuração inválida.' }, 403)
 
-    const data = await request.json().catch(() => ({})) as any
-    const displayName = String(data.display_name || '').trim()
-    const email = String(data.email || '').trim().toLowerCase()
-    const password = String(data.password || '')
-    if (!displayName || !email.includes('@') || password.length < 10) return json({ ok: false, message: 'Informe nome, e-mail válido e senha com pelo menos 10 caracteres.' }, 400)
+      const data = await request.json().catch(() => ({})) as any
+      const displayName = String(data.display_name || '').trim()
+      const email = String(data.email || '').trim().toLowerCase()
+      const password = String(data.password || '')
+      if (!displayName || !email.includes('@') || password.length < 10) return json({ ok: false, message: 'Informe nome, e-mail válido e senha com pelo menos 10 caracteres.' }, 400)
 
-    const pwd = await hashPassword(password)
-    const id = crypto.randomUUID()
-    await env.DB.prepare(`INSERT INTO admin_users (id,email,password_hash,password_salt,display_name,role,active) VALUES (?,?,?,?,?,'psychologist',1)`)
-      .bind(id, email, pwd.hash, pwd.salt, displayName).run()
+      const pwd = await hashPassword(password)
+      const id = crypto.randomUUID()
+      await env.DB.prepare(`INSERT INTO admin_users (id,email,password_hash,password_salt,display_name,role,active) VALUES (?,?,?,?,?,'psychologist',1)`)
+        .bind(id, email, pwd.hash, pwd.salt, displayName).run()
 
-    return json({ ok: true, admin_id: id }, 201)
+      return json({ ok: true, admin_id: id }, 201)
+    } catch (error) {
+      return json({ ok: false, message: error instanceof Error ? error.message : 'Falha ao criar administrador.' }, 500)
+    }
   }
 
   return null
