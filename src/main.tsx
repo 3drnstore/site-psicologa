@@ -6,6 +6,7 @@ import PasswordRecovery from './PasswordRecovery'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
+import { installPatientBlockedEnhancer } from './patient-blocked-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -42,3 +43,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
+installPatientBlockedEnhancer()
