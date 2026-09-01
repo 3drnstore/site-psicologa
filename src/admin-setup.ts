@@ -4,7 +4,7 @@ import type { Env } from './types'
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
 async function ensureAdminSchema(env: Env) {
-  await env.DB.exec(`
+  await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS admin_users (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
@@ -15,8 +15,8 @@ async function ensureAdminSchema(env: Env) {
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `)
+    )
+  `).run()
 }
 
 export async function handleAdminSetup(request: Request, env: Env): Promise<Response | null> {
