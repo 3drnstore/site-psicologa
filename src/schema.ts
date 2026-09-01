@@ -167,7 +167,6 @@ export async function ensureSchema(env: Env) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_availability_starts_at ON availability(starts_at);
-    CREATE INDEX IF NOT EXISTS idx_availability_recurring_block ON availability(recurring_block_id);
     CREATE INDEX IF NOT EXISTS idx_recurring_blocks_active ON recurring_blocks(active,weekday,start_time);
     CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id);
     CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
@@ -189,6 +188,10 @@ export async function ensureSchema(env: Env) {
   await addColumn(env, 'availability', 'public_visibility', "TEXT NOT NULL DEFAULT 'visible'")
   await addColumn(env, 'availability', 'source', "TEXT NOT NULL DEFAULT 'manual'")
   await addColumn(env, 'availability', 'recurring_block_id', 'TEXT')
+
+  await env.DB.exec(`
+    CREATE INDEX IF NOT EXISTS idx_availability_recurring_block ON availability(recurring_block_id);
+  `)
 
   await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('consultation_price_cents', '0')`),
