@@ -62,5 +62,18 @@ export async function ensureAgendaSchema(env: Env) {
   await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('appointment_duration_minutes','50')`).run()
   await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('hold_minutes','15')`).run()
 
+  const cleanupKey = 'migration_cleanup_2027_test_interval_v1'
+  const cleanupDone = await env.DB.prepare(`SELECT value FROM settings WHERE key=?`).bind(cleanupKey).first<any>()
+  if (!cleanupDone) {
+    await env.DB.prepare(`
+      DELETE FROM availability
+      WHERE substr(starts_at,1,10)='2027-01-01'
+        AND substr(ends_at,1,10) IN ('2027-12-31','2028-01-01')
+        AND (julianday(ends_at)-julianday(starts_at)) > 300
+        AND status NOT IN ('held','confirmed')
+    `).run()
+    await env.DB.prepare(`INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?, 'done', CURRENT_TIMESTAMP)`).bind(cleanupKey).run()
+  }
+
   ready = true
 }
