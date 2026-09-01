@@ -8,6 +8,7 @@ import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
+import { handlePublicAvailabilityV3 } from './public-availability-v3'
 import { ensureAgendaSchema } from './agenda-schema'
 import { cleanupLegacyAgenda } from './agenda-normalize'
 import type { Env } from './types'
@@ -42,11 +43,6 @@ export default {
       try {
         await ensureAgendaSchema(env)
 
-        // A agenda atual usa exclusivamente sessões de 50 minutos,
-        // de segunda a sábado, iniciando em hora cheia. Cadastros antigos
-        // livres/bloqueados fora desse padrão são removidos quando não
-        // possuem consulta ativa vinculada. Isso também elimina conflitos
-        // causados pelos testes antigos de intervalos longos e de 1 hora.
         if (path.startsWith('/api/admin/')) {
           await cleanupLegacyAgenda(env)
         }
@@ -63,6 +59,11 @@ export default {
 
         if (/^\/api\/admin\/availability\/\d+$/.test(path) && request.method === 'DELETE') {
           const response = await handleAgendaDelete(request, env, path)
+          if (response) return response
+        }
+
+        if (path === '/api/availability' && request.method === 'GET') {
+          const response = await handlePublicAvailabilityV3(request, env, path)
           if (response) return response
         }
 
