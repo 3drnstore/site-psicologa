@@ -14,6 +14,8 @@ export interface Env {
   PAYMENT_API_KEY?: string
   PAYMENT_WEBHOOK_SECRET?: string
   ADMIN_SETUP_TOKEN?: string
+  RESEND_API_KEY?: string
+  EMAIL_FROM?: string
 }
 
 export type PatientSession = {
