@@ -7,6 +7,7 @@ import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installPatientBlockedEnhancer } from './patient-blocked-enhancer'
+import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -44,3 +45,4 @@ installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
 installPatientBlockedEnhancer()
+installAdminAppointmentEnhancer()
