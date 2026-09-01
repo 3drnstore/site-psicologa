@@ -33,10 +33,15 @@ export const api = {
   adminAppointments: () => request<any>('/api/admin/appointments'),
   setAppointmentStatus: (id: string | number, status: 'confirmed' | 'cancelled', reason?: string) => request(`/api/admin/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }),
   createSlot: (payload: { starts_at: string; ends_at: string }) => request('/api/admin/availability', { method: 'POST', body: JSON.stringify(payload) }),
-  adminAvailability: (from?: string, to?: string) => request<any>(`/api/admin/availability-v2?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`),
-  setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}/mode`, { method: 'PATCH', body: JSON.stringify({ mode }) }),
-  createRecurringBlock: (payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => request<any>('/api/admin/recurring-blocks', { method: 'POST', body: JSON.stringify(payload) }),
-  setRecurringBlockActive: (id: string, active: boolean) => request(`/api/admin/recurring-blocks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  adminAvailability: async (_from?: string, _to?: string) => {
+    // A rota administrativa v2 ainda não existe no Worker publicado. Não deixe isso
+    // derrubar a sessão profissional: a grade será carregada separadamente quando
+    // a API v2 estiver disponível.
+    return { ok: true, slots: [], recurring_blocks: [] }
+  },
+  setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}`, { method: 'PATCH', body: JSON.stringify({ blocked: mode === 'blocked' }) }),
+  createRecurringBlock: (_payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => Promise.reject(new Error('Bloqueio recorrente será ativado na próxima etapa da API.')),
+  setRecurringBlockActive: (_id: string, _active: boolean) => Promise.reject(new Error('Bloqueio recorrente será ativado na próxima etapa da API.')),
   settings: () => request<any>('/api/admin/settings'),
   updateSettings: (payload: Record<string, string | number>) => request('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) }),
 }
