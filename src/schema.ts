@@ -39,6 +39,22 @@ export async function ensureSchema(env: Env) {
       starts_at TEXT NOT NULL,
       ends_at TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'free' CHECK (status IN ('free','held','confirmed','blocked')),
+      public_visibility TEXT NOT NULL DEFAULT 'visible',
+      source TEXT NOT NULL DEFAULT 'manual',
+      recurring_block_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS recurring_blocks (
+      id TEXT PRIMARY KEY,
+      weekday INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT 'Bloqueio recorrente',
+      active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -151,6 +167,8 @@ export async function ensureSchema(env: Env) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_availability_starts_at ON availability(starts_at);
+    CREATE INDEX IF NOT EXISTS idx_availability_recurring_block ON availability(recurring_block_id);
+    CREATE INDEX IF NOT EXISTS idx_recurring_blocks_active ON recurring_blocks(active,weekday,start_time);
     CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id);
     CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
     CREATE INDEX IF NOT EXISTS idx_payments_appointment_id ON payments(appointment_id);
@@ -168,6 +186,9 @@ export async function ensureSchema(env: Env) {
   await addColumn(env, 'payments', 'pix_qr_code', 'TEXT')
   await addColumn(env, 'payments', 'pix_copy_paste', 'TEXT')
   await addColumn(env, 'payments', 'raw_status', 'TEXT')
+  await addColumn(env, 'availability', 'public_visibility', "TEXT NOT NULL DEFAULT 'visible'")
+  await addColumn(env, 'availability', 'source', "TEXT NOT NULL DEFAULT 'manual'")
+  await addColumn(env, 'availability', 'recurring_block_id', 'TEXT')
 
   await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('consultation_price_cents', '0')`),
