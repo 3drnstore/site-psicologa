@@ -18,7 +18,7 @@ export async function cleanupLegacyAgenda(env: Env) {
     SELECT id,starts_at,ends_at,status,COALESCE(source,'manual') AS source
     FROM availability
     WHERE COALESCE(source,'manual')='manual'
-      AND status IN ('free','blocked')
+      AND status IN ('free','occupied','blocked')
   `).all<any>()
 
   const legacy = (candidates.results || []).filter((row: any) => !isStandardSession(row.starts_at, row.ends_at))
