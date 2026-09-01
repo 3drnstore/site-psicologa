@@ -12,12 +12,13 @@ async function admin(request:Request,env:Env){
   return env.DB.prepare(`SELECT a.id FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`)
     .bind(await sha256(token),now()).first<any>()
 }
-
+async function tableExists(env:Env,name:string){
+  return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
+}
 function validCell(cell:Cell){
   const s=new Date(cell.starts_at),e=new Date(cell.ends_at)
   if(Number.isNaN(s.getTime())||Number.isNaN(e.getTime())||e<=s)return false
-  const weekday=s.getUTCDay()
-  const duration=(e.getTime()-s.getTime())/60000
+  const weekday=s.getUTCDay(),duration=(e.getTime()-s.getTime())/60000
   return weekday>=1&&weekday<=6&&duration===60
 }
 
@@ -30,6 +31,7 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   if(!['free','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
   if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita blocos de 1 hora, de segunda a sábado.'},400)
 
+  const hasAppointments=await tableExists(env,'appointments')
   let changed=0,skipped=0
   for(const cell of cells){
     const exact=await env.DB.prepare(`SELECT id,status FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>()
@@ -38,13 +40,14 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
     if(mode==='delete'){
       if(!exact){skipped++;continue}
       if(['held','confirmed'].includes(String(exact.status))){skipped++;continue}
-      const linked=await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? AND status IN ('pending_payment','confirmed') LIMIT 1`).bind(exact.id).first<any>()
-      if(linked){skipped++;continue}
+      if(hasAppointments){
+        const linked=await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? AND status IN ('pending_payment','confirmed') LIMIT 1`).bind(exact.id).first<any>()
+        if(linked){skipped++;continue}
+      }
       await env.DB.prepare('DELETE FROM availability WHERE id=?').bind(exact.id).run();changed++;continue
     }
 
     if(overlap){skipped++;continue}
-
     if(exact){
       if(['held','confirmed'].includes(String(exact.status))){skipped++;continue}
       await env.DB.prepare(`UPDATE availability SET status=?,public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
