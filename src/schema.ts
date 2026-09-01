@@ -129,6 +129,16 @@ export async function ensureSchema(env: Env) {
       FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS oauth_pending (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      google_sub TEXT NOT NULL,
+      email TEXT NOT NULL,
+      full_name TEXT,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS audit_log (
       id TEXT PRIMARY KEY,
       actor_type TEXT NOT NULL CHECK (actor_type IN ('patient','admin','system')),
@@ -147,6 +157,7 @@ export async function ensureSchema(env: Env) {
     CREATE INDEX IF NOT EXISTS idx_clinical_notes_patient_date ON clinical_notes(patient_id, session_date DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_hash ON admin_sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_oauth_pending_token_hash ON oauth_pending(token_hash);
     CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
   `)
 
