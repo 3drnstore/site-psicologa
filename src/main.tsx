@@ -6,10 +6,15 @@ import './styles.css'
 import './app-extra.css'
 import './v2.css'
 
-const Root = window.location.pathname === '/admin/setup' ? AdminSetup : App
+const path = window.location.pathname
+
+function RoutedApp() {
+  if (path === '/admin/setup') return <AdminSetup />
+  return <App initialView={path === '/admin' || path === '/admin/' ? 'admin-login' : undefined} />
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Root />
+    <RoutedApp />
   </React.StrictMode>,
 )
