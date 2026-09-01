@@ -5,6 +5,7 @@ import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
+import { handleAgendaCreate } from './agenda-create'
 import type { Env } from './types'
 
 export default {
@@ -17,8 +18,6 @@ export default {
       if (response) return response
     }
 
-    // Login profissional e recuperação de senha não dependem do schema completo
-    // da agenda/prontuário. Isso mantém o acesso recuperável mesmo durante migrations.
     const authV2 = await handleAuthV2(request, env, path)
     if (authV2) return authV2
 
@@ -31,6 +30,11 @@ export default {
 
     if (path === '/api/payments/checkout' || path.startsWith('/api/payments/webhook/sumup') || path.startsWith('/api/payments/webhook/infinitepay')) {
       const response = await handlePaymentsV2(request, env, path, ctx)
+      if (response) return response
+    }
+
+    if (path === '/api/admin/availability' && request.method === 'POST') {
+      const response = await handleAgendaCreate(request, env, path)
       if (response) return response
     }
 
