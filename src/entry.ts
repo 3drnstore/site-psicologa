@@ -9,6 +9,7 @@ import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
 import { handlePublicAvailabilityV3 } from './public-availability-v3'
+import { handleTestAppointments } from './test-appointments'
 import { ensureAgendaSchema } from './agenda-schema'
 import { cleanupLegacyAgenda } from './agenda-normalize'
 import type { Env } from './types'
@@ -77,6 +78,11 @@ export default {
     }
 
     if (path.startsWith('/api/')) await ensureSchema(env)
+
+    if (path === '/api/admin/test-appointments' && request.method === 'POST') {
+      const response = await handleTestAppointments(request, env, path)
+      if (response) return response
+    }
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
