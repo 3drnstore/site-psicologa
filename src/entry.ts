@@ -32,7 +32,7 @@ export default {
       path === '/api/availability' ||
       path === '/api/admin/availability-v2' ||
       path.startsWith('/api/admin/recurring-blocks') ||
-      /^\/api\/admin\/availability\/\d+\/mode$/.test(path)
+      /^\/api\/admin\/availability\/\d+(?:\/mode)?$/.test(path)
 
     if (isAgendaRoute) {
       try {
