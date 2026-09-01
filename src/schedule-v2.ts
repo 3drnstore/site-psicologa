@@ -18,7 +18,12 @@ async function admin(request: Request, env: Env) {
     .bind(await sha256(token), nowIso()).first<any>()
 }
 
+async function tableExists(env: Env, name: string) {
+  return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
+}
+
 async function releaseExpired(env: Env) {
+  if (!(await tableExists(env, 'appointments'))) return
   const rows = await env.DB.prepare(`SELECT id,availability_id FROM appointments WHERE status='pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?`).bind(nowIso()).all<any>()
   for (const row of rows.results || []) {
     await env.DB.batch([
@@ -71,7 +76,11 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const to = url.searchParams.get('to') || new Date(Date.now()+60*86400000).toISOString()
     const result = await env.DB.prepare(`
       SELECT id,starts_at,ends_at,status,
-        CASE WHEN status='free' THEN 'free' ELSE 'occupied' END AS public_status
+        CASE
+          WHEN status='free' THEN 'free'
+          WHEN status='blocked' THEN 'blocked'
+          ELSE 'occupied'
+        END AS public_status
       FROM availability
       WHERE COALESCE(public_visibility,'visible')='visible' AND starts_at>=? AND starts_at<=?
       ORDER BY starts_at ASC
@@ -100,8 +109,10 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const slot = await env.DB.prepare(`SELECT id,status FROM availability WHERE id=?`).bind(id).first<any>()
     if (!slot) return json({ ok:false,message:'Horário não encontrado.' },404)
     if (['held','confirmed'].includes(String(slot.status))) return json({ ok:false,message:'Horário reservado ou confirmado não pode ser excluído.' },409)
-    const linked = await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? LIMIT 1`).bind(id).first<any>()
-    if (linked) return json({ ok:false,message:'Este horário possui histórico de consulta e não pode ser excluído. Use ocultar ou bloquear.' },409)
+    if (await tableExists(env, 'appointments')) {
+      const linked = await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? LIMIT 1`).bind(id).first<any>()
+      if (linked) return json({ ok:false,message:'Este horário possui histórico de consulta e não pode ser excluído. Use ocultar ou bloquear.' },409)
+    }
     await env.DB.prepare(`DELETE FROM availability WHERE id=?`).bind(id).run()
     return json({ ok:true })
   }
@@ -112,8 +123,9 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const data = await request.json().catch(()=>({})) as any
     const slot = await env.DB.prepare(`SELECT * FROM availability WHERE id=?`).bind(id).first<any>()
     if (!slot) return json({ ok:false,message:'Horário não encontrado.' },404)
-    if (['held','confirmed'].includes(slot.status) && ['blocked','hidden'].includes(data.mode)) return json({ ok:false,message:'Horário reservado ou confirmado não pode ser alterado dessa forma.' },409)
+    if (['held','confirmed'].includes(slot.status) && ['blocked','occupied','hidden'].includes(data.mode)) return json({ ok:false,message:'Horário reservado ou confirmado não pode ser alterado dessa forma.' },409)
     if (data.mode === 'blocked') await env.DB.prepare(`UPDATE availability SET status='blocked',public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(id).run()
+    else if (data.mode === 'occupied') await env.DB.prepare(`UPDATE availability SET status='occupied',public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(id).run()
     else if (data.mode === 'free') await env.DB.prepare(`UPDATE availability SET status='free',public_visibility='visible',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(id).run()
     else if (data.mode === 'hidden') await env.DB.prepare(`UPDATE availability SET public_visibility='hidden',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(id).run()
     else if (data.mode === 'visible') await env.DB.prepare(`UPDATE availability SET public_visibility='visible',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(id).run()
