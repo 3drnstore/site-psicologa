@@ -9,6 +9,7 @@ import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
 import { ensureAgendaSchema } from './agenda-schema'
+import { cleanupLegacyAgenda } from './agenda-normalize'
 import type { Env } from './types'
 
 const apiError = (message: string, detail?: string) => new Response(JSON.stringify({ ok: false, message, detail }), {
@@ -40,6 +41,15 @@ export default {
     if (isAgendaRoute) {
       try {
         await ensureAgendaSchema(env)
+
+        // A agenda atual usa exclusivamente sessões de 50 minutos,
+        // de segunda a sábado, iniciando em hora cheia. Cadastros antigos
+        // livres/bloqueados fora desse padrão são removidos quando não
+        // possuem consulta ativa vinculada. Isso também elimina conflitos
+        // causados pelos testes antigos de intervalos longos e de 1 hora.
+        if (path.startsWith('/api/admin/')) {
+          await cleanupLegacyAgenda(env)
+        }
 
         if (path === '/api/admin/availability' && request.method === 'POST') {
           const response = await handleAgendaCreate(request, env, path)
