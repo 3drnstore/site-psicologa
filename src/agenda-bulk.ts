@@ -5,7 +5,7 @@ const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,
 const now=()=>new Date().toISOString()
 
 type Cell={starts_at:string;ends_at:string}
-type Mode='free'|'blocked'|'delete'
+type Mode='free'|'occupied'|'blocked'|'delete'
 type Existing={id:number;starts_at:string;ends_at:string;status:string}
 
 async function admin(request:Request,env:Env){
@@ -29,7 +29,7 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   const body=await request.json().catch(()=>({})) as any
   const mode=String(body.mode||'') as Mode
   const cells=(Array.isArray(body.cells)?body.cells:[]).slice(0,200).map((c:any)=>({starts_at:String(c.starts_at||''),ends_at:String(c.ends_at||'')})) as Cell[]
-  if(!['free','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
+  if(!['free','occupied','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
   if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita sessões de 50 minutos, de segunda a sábado.'},400)
 
   const minStart=cells.reduce((a,c)=>c.starts_at<a?c.starts_at:a,cells[0].starts_at)
