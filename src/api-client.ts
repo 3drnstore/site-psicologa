@@ -26,8 +26,6 @@ export const api = {
   adminLogin: (email: string, password: string) => request<any>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   adminLogout: () => request('/api/admin/logout', { method: 'POST' }),
   adminMe: () => request<any>('/api/admin/me'),
-  // Dados auxiliares do painel não podem derrubar uma sessão administrativa válida.
-  // Cada módulo carrega de forma independente; falha de schema/rota vira estado vazio.
   adminPatients: () => request<any>('/api/admin/patients').catch(() => ({ ok: true, patients: [] })),
   adminPatient: (id: string | number) => request<any>(`/api/admin/patients/${encodeURIComponent(String(id))}`),
   saveClinicalNote: (patientId: string | number, payload: { appointment_id?: string | number; session_date: string; note_text: string }) => request(`/api/admin/patients/${encodeURIComponent(String(patientId))}/notes`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -35,10 +33,10 @@ export const api = {
   adminAppointments: () => request<any>('/api/admin/appointments').catch(() => ({ ok: true, appointments: [] })),
   setAppointmentStatus: (id: string | number, status: 'confirmed' | 'cancelled', reason?: string) => request(`/api/admin/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }),
   createSlot: (payload: { starts_at: string; ends_at: string }) => request('/api/admin/availability', { method: 'POST', body: JSON.stringify(payload) }),
-  adminAvailability: async (_from?: string, _to?: string) => ({ ok: true, slots: [], recurring_blocks: [] }),
-  setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}`, { method: 'PATCH', body: JSON.stringify({ blocked: mode === 'blocked' }) }),
-  createRecurringBlock: (_payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => Promise.reject(new Error('Bloqueio recorrente será ativado na próxima etapa da API.')),
-  setRecurringBlockActive: (_id: string, _active: boolean) => Promise.reject(new Error('Bloqueio recorrente será ativado na próxima etapa da API.')),
+  adminAvailability: (from?: string, to?: string) => request<any>(`/api/admin/availability-v2?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`),
+  setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}/mode`, { method: 'PATCH', body: JSON.stringify({ mode }) }),
+  createRecurringBlock: (payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => request<any>('/api/admin/recurring-blocks', { method: 'POST', body: JSON.stringify(payload) }),
+  setRecurringBlockActive: (id: string, active: boolean) => request(`/api/admin/recurring-blocks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   settings: () => request<any>('/api/admin/settings').catch(() => ({ ok: true, settings: {} })),
   updateSettings: (payload: Record<string, string | number>) => request('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) }),
 }
