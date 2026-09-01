@@ -88,10 +88,22 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
   if (path === '/api/admin/availability-v2' && request.method === 'GET') {
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
-    const to = url.searchParams.get('to') || new Date(Date.now()+90*86400000).toISOString()
+    const to = url.searchParams.get('to') || new Date(Date.now()+730*86400000).toISOString()
     const slots = await env.DB.prepare(`SELECT id,starts_at,ends_at,status,COALESCE(public_visibility,'visible') AS public_visibility,COALESCE(source,'manual') AS source,recurring_block_id FROM availability WHERE starts_at>=? AND starts_at<=? ORDER BY starts_at`).bind(from,to).all<any>()
     const rules = await env.DB.prepare(`SELECT * FROM recurring_blocks ORDER BY active DESC,weekday,start_time`).all<any>()
     return json({ ok:true, slots:slots.results||[], recurring_blocks:rules.results||[] })
+  }
+
+  const deleteMatch = path.match(/^\/api\/admin\/availability\/(\d+)$/)
+  if (deleteMatch && request.method === 'DELETE') {
+    const id = Number(deleteMatch[1])
+    const slot = await env.DB.prepare(`SELECT id,status FROM availability WHERE id=?`).bind(id).first<any>()
+    if (!slot) return json({ ok:false,message:'Horário não encontrado.' },404)
+    if (['held','confirmed'].includes(String(slot.status))) return json({ ok:false,message:'Horário reservado ou confirmado não pode ser excluído.' },409)
+    const linked = await env.DB.prepare(`SELECT id FROM appointments WHERE availability_id=? LIMIT 1`).bind(id).first<any>()
+    if (linked) return json({ ok:false,message:'Este horário possui histórico de consulta e não pode ser excluído. Use ocultar ou bloquear.' },409)
+    await env.DB.prepare(`DELETE FROM availability WHERE id=?`).bind(id).run()
+    return json({ ok:true })
   }
 
   const modeMatch = path.match(/^\/api\/admin\/availability\/(\d+)\/mode$/)
