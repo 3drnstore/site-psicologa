@@ -35,6 +35,7 @@ export const api = {
   createSlot: (payload: { starts_at: string; ends_at: string }) => request('/api/admin/availability', { method: 'POST', body: JSON.stringify(payload) }),
   adminAvailability: (from?: string, to?: string) => request<any>(`/api/admin/availability-v2?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`).catch(() => ({ ok: true, slots: [], recurring_blocks: [] })),
   setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}/mode`, { method: 'PATCH', body: JSON.stringify({ mode }) }),
+  deleteSlot: (slotId: string | number) => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}`, { method: 'DELETE' }),
   createRecurringBlock: (payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => request<any>('/api/admin/recurring-blocks', { method: 'POST', body: JSON.stringify(payload) }),
   setRecurringBlockActive: (id: string, active: boolean) => request(`/api/admin/recurring-blocks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   settings: () => request<any>('/api/admin/settings').catch(() => ({ ok: true, settings: {} })),
