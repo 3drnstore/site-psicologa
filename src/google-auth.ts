@@ -3,7 +3,7 @@ import type { Env } from './types'
 
 const PATIENT_COOKIE = 'ps_session'
 const SESSION_SECONDS = 60 * 60 * 24 * 14
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
+const json = (data: unknown, status = 200, headers: HeadersInit = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } })
 const digits = (value: string) => value.replace(/\D/g, '')
 
 async function createSession(patientId: number, env: Env) {
@@ -85,7 +85,7 @@ export async function handleGoogleAuth(request: Request, env: Env) {
     const patientId = Number(result.meta.last_row_id)
     await env.DB.prepare('DELETE FROM oauth_pending WHERE token_hash = ?').bind(await sha256(pendingToken)).run()
     const session = await createSession(patientId, env)
-    return json({ ok: true, patient_id: patientId }, 201, { 'set-cookie': cookie(PATIENT_COOKIE, session, SESSION_SECONDS) } as any)
+    return json({ ok: true, patient_id: patientId }, 201, { 'set-cookie': cookie(PATIENT_COOKIE, session, SESSION_SECONDS) })
   }
 
   return null
