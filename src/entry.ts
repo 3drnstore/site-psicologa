@@ -3,6 +3,7 @@ import { ensureSchema } from './schema'
 import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
+import { handleMercadoPagoTestPix } from './mercadopago-test-pix'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
@@ -50,6 +51,8 @@ export default {
     }
 
     if (path.startsWith('/api/payments/')) {
+      const testPix = await handleMercadoPagoTestPix(request, env, path, ctx)
+      if (testPix) return testPix
       const response = await handlePaymentsV2(request, env, path, ctx)
       if (response) return response
     }
