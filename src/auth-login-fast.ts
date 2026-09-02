@@ -4,7 +4,8 @@ import type { Env } from './types'
 const PATIENT_COOKIE='ps_session'
 const ADMIN_COOKIE='ps_admin_session'
 const SESSION_SECONDS=60*60*24*14
-const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8',...headers}})
+const NO_STORE={'cache-control':'no-store, no-cache, must-revalidate','pragma':'no-cache'}
+const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8',...NO_STORE,...headers}})
 const now=()=>new Date().toISOString()
 const expires=()=>new Date(Date.now()+SESSION_SECONDS*1000).toISOString()
 
