@@ -134,7 +134,9 @@ export function installPatientPaymentStabilizer(){
     }
   },true)
 
-  new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(document.body,{childList:true,subtree:true})
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
   window.addEventListener('resize',schedule,{passive:true})
+  window.addEventListener('pageshow',schedule)
   schedule()
 }
