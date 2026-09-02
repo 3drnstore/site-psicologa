@@ -14,6 +14,7 @@ import { handlePatientReserveV2 } from './patient-reserve-v2'
 import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
 import { ensureAgendaSchema } from './agenda-schema'
+import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { cleanupLegacyAgenda } from './agenda-normalize'
 import type { Env } from './types'
 
@@ -52,7 +53,7 @@ export default {
 
     if (path.startsWith('/api/payments/')) {
       try {
-        await ensureSchema(env)
+        await ensurePaymentSchemaV2(env)
 
         if (path === '/api/payments/checkout' && request.method === 'POST') {
           const probe = await request.clone().json().catch(() => ({})) as any
