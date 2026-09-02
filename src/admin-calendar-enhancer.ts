@@ -1,4 +1,4 @@
-type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string }
+type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string; appointment_id?:number|null; appointment_status?:string|null; patient_id?:number|null; full_name?:string|null; email?:string|null; phone?:string|null }
 type Cell = { starts_at:string; ends_at:string; day:Date; hour:number; slot?:Slot }
 type BulkMode='free'|'occupied'|'blocked'
 
@@ -9,6 +9,7 @@ const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confi
 const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.status==='occupied'?'occupied':s.public_visibility==='hidden'?'hidden':'free'
 const monthYear=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(d).replace(/^./,c=>c.toUpperCase())
 const shortWeekday=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(d).replace(/^./,c=>c.toUpperCase())
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[c]||c))
 
 class AdminCalendar {
   host:HTMLElement
@@ -106,6 +107,13 @@ class AdminCalendar {
 
   nav(weeks:number){this.cursor=addDays(this.cursor,weeks*7);this.selected.clear();this.anchorKey=null;void this.load()}
 
+  slotBody(s?:Slot){
+    if(s&&(s.status==='confirmed'||s.status==='held')&&s.full_name){
+      return `<span class="gc-patient-name">${esc(s.full_name)}</span><span class="gc-patient-status">${s.status==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
+    }
+    return `<span>${statusLabel(s)}</span>`
+  }
+
   render(){
     const days=this.days()
     const today=new Date();today.setHours(0,0,0,0)
@@ -140,9 +148,10 @@ class AdminCalendar {
             <div class="agenda-day-cards">
               ${cells.map(c=>{
                 const selected=this.selected.has(this.key(c))
-                return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''}" data-cell="${this.key(c)}">
+                const hasAppointment=Boolean(c.slot?.appointment_id&&(c.slot.status==='confirmed'||c.slot.status==='held'))
+                return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''}" data-cell="${this.key(c)}">
                   <strong class="agenda-slot-time">${fmtTime(c.starts_at)} - ${fmtTime(c.ends_at)}</strong>
-                  <span>${statusLabel(c.slot)}</span>
+                  ${this.slotBody(c.slot)}
                 </button>`
               }).join('')}
             </div>
