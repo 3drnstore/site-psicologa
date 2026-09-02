@@ -1,7 +1,5 @@
 export type ApiError = { message?: string }
 
-const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include',
@@ -14,37 +12,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data
 }
 
-async function sessionRequest<T>(path:string):Promise<T>{
-  let lastError:unknown
-  for(let attempt=0;attempt<3;attempt++){
-    try{return await request<T>(path)}
-    catch(error){lastError=error;if(attempt<2)await sleep(180)}
-  }
-  throw lastError instanceof Error?lastError:new Error('Não foi possível restaurar a sessão.')
-}
-
-async function loginAndWait<T>(path:string,payload:Record<string,string>,sessionPath:string){
-  const result=await request<T>(path,{method:'POST',body:JSON.stringify(payload)})
-  await sleep(220)
-  await sessionRequest(sessionPath)
-  return result
-}
-
 export const api = {
   health: () => request<{ ok: boolean; database: string }>('/api/health'),
   register: (payload: Record<string, string>) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   completeGoogle: (payload: Record<string, string>) => request('/api/auth/google/complete', { method: 'POST', body: JSON.stringify(payload) }),
-  login: (email: string, password: string) => loginAndWait('/api/auth/login',{email,password},'/api/me'),
+  login: (email: string, password: string) => request<any>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
-  me: () => sessionRequest<any>('/api/me'),
-  availability: (from?: string, to?: string) => request<any>(`/api/availability?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`),
+  me: () => request<any>('/api/me'),
+  availability: (from?: string, to?: string) => request<any>(`/api/availability?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`).catch(() => ({ ok: true, slots: [], consultation_price_cents: 0, card_price_cents: 0, pix_price_cents: 0 })),
   reserve: (slotId: string | number) => request<any>('/api/appointments/reserve', { method: 'POST', body: JSON.stringify({ slot_id: slotId }) }),
   myAppointments: () => request<any>('/api/appointments/mine').catch(() => ({ ok: true, appointments: [] })),
   cancelAppointment: (appointmentId: string | number) => request(`/api/appointments/${appointmentId}/cancel`, { method: 'POST' }),
   checkout: (appointmentId: string | number, method: 'pix' | 'card') => request<any>('/api/payments/checkout', { method: 'POST', body: JSON.stringify({ appointment_id: appointmentId, method }) }),
-  adminLogin: (email: string, password: string) => loginAndWait('/api/admin/login',{email,password},'/api/admin/me'),
+  adminLogin: (email: string, password: string) => request<any>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   adminLogout: () => request('/api/admin/logout', { method: 'POST' }),
-  adminMe: () => sessionRequest<any>('/api/admin/me'),
+  adminMe: () => request<any>('/api/admin/me'),
   adminPatients: () => request<any>('/api/admin/patients').catch(() => ({ ok: true, patients: [] })),
   adminPatient: (id: string | number) => request<any>(`/api/admin/patients/${encodeURIComponent(String(id))}`),
   saveClinicalNote: (patientId: string | number, payload: { appointment_id?: string | number; session_date: string; note_text: string }) => request(`/api/admin/patients/${encodeURIComponent(String(patientId))}/notes`, { method: 'POST', body: JSON.stringify(payload) }),
