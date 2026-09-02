@@ -3,6 +3,7 @@ import { ensureSchema } from './schema'
 import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
+import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAgendaCreate } from './agenda-create'
@@ -51,15 +52,22 @@ export default {
 
     if (path.startsWith('/api/payments/')) {
       try {
-        // Payments require appointments/payments columns that may not have been
-        // initialized yet because checkout routes bypass the general API bootstrap.
         await ensureSchema(env)
+
+        if (path === '/api/payments/checkout' && request.method === 'POST') {
+          const probe = await request.clone().json().catch(() => ({})) as any
+          if (probe.method === 'pix') {
+            const pixResponse = await handleMercadoPagoPixV3(request, env, path)
+            if (pixResponse) return pixResponse
+          }
+        }
+
         const response = await handlePaymentsV2(request, env, path, ctx)
         if (response) return response
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error)
         console.error('Payment API error:', detail)
-        return apiError('Não foi possível iniciar o pagamento.', detail)
+        return apiError(`Não foi possível iniciar o pagamento${detail ? `: ${detail}` : '.'}`, detail)
       }
     }
 
