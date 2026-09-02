@@ -6,15 +6,16 @@ const cache=new Map<string,CacheEntry>()
 const pending=new Map<string,PendingEntry>()
 
 const TTL:Record<string,number>={
-  '/api/me':30000,
-  '/api/admin/me':30000,
-  '/api/availability':15000,
-  '/api/appointments/mine':15000,
-  '/api/admin/appointments':10000,
-  '/api/admin/patients':30000,
-  '/api/admin/settings':30000,
-  '/api/admin/availability-v2':10000,
+  '/api/me':60000,
+  '/api/admin/me':60000,
+  '/api/availability':60000,
+  '/api/appointments/mine':60000,
+  '/api/admin/appointments':30000,
+  '/api/admin/patients':60000,
+  '/api/admin/settings':60000,
+  '/api/admin/availability-v2':30000,
 }
+const ERROR_TTL=5000
 
 function sameOriginUrl(input:RequestInfo|URL){
   try{
@@ -64,8 +65,8 @@ export function installD1FetchCache(){
     const task=(async()=>{
       const response=await originalFetch(input as any,{...init,cache:'no-store'})
       const body=await response.clone().text()
-      const entry:CacheEntry={expires:Date.now()+ttl,status:response.status,statusText:response.statusText,headers:[...response.headers.entries()],body}
-      if(response.ok)cache.set(key,entry)
+      const entry:CacheEntry={expires:Date.now()+(response.ok?ttl:ERROR_TTL),status:response.status,statusText:response.statusText,headers:[...response.headers.entries()],body}
+      cache.set(key,entry)
       return entry
     })()
     pending.set(key,task)
