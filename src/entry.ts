@@ -17,6 +17,7 @@ import { handlePricingV2 } from './pricing-v2'
 import { ensureAgendaSchema } from './agenda-schema'
 import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { cleanupLegacyAgenda } from './agenda-normalize'
+import { handleContactApi } from './contact-api'
 import type { Env } from './types'
 
 const apiError = (message: string, detail?: string) => new Response(JSON.stringify({ ok: false, message, detail }), {
@@ -28,6 +29,17 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
+
+    if (path === '/api/contact') {
+      try {
+        const response = await handleContactApi(request, env, path)
+        if (response) return response
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        console.error('Contact API error:', detail)
+        return apiError('Não foi possível enviar a mensagem.', detail)
+      }
+    }
 
     if (path === '/api/admin/setup' || path === '/api/admin/setup-status') {
       const response = await handleAdminSetup(request, env)
