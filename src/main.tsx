@@ -6,6 +6,7 @@ import AdminSetup from './AdminSetup'
 import PasswordRecovery from './PasswordRecovery'
 import StatusPage from './StatusPage'
 import PrivacyPage from './PrivacyPage'
+import { api } from './api-client'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
@@ -64,6 +65,10 @@ function SessionUnavailable({ professional = false, onRetry }: { professional?: 
   </div>
 }
 
+function errorStatus(error: unknown) {
+  return (error as Error & { status?: number })?.status
+}
+
 function AdminRouteGate() {
   const [state, setState] = useState<GateState>('checking')
   const [attempt, setAttempt] = useState(0)
@@ -71,14 +76,12 @@ function AdminRouteGate() {
   useEffect(() => {
     let active = true
     setState('checking')
-    fetch('/api/admin/me', { credentials: 'include', cache: 'no-store' })
-      .then(response => {
+    api.adminMe()
+      .then(() => { if (active) setState('authenticated') })
+      .catch(error => {
         if (!active) return
-        if (response.ok) setState('authenticated')
-        else if (response.status === 401) setState('anonymous')
-        else setState('unavailable')
+        setState(errorStatus(error) === 401 ? 'anonymous' : 'unavailable')
       })
-      .catch(() => { if (active) setState('unavailable') })
     return () => { active = false }
   }, [attempt])
 
@@ -97,14 +100,12 @@ function PatientRouteGate() {
   useEffect(() => {
     let active = true
     setState('checking')
-    fetch('/api/me', { credentials: 'include', cache: 'no-store' })
-      .then(response => {
+    api.me()
+      .then(() => { if (active) setState('authenticated') })
+      .catch(error => {
         if (!active) return
-        if (response.ok) setState('authenticated')
-        else if (response.status === 401) setState('anonymous')
-        else setState('unavailable')
+        setState(errorStatus(error) === 401 ? 'anonymous' : 'unavailable')
       })
-      .catch(() => { if (active) setState('unavailable') })
     return () => { active = false }
   }, [attempt])
 
