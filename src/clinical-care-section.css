@@ -1,0 +1,66 @@
+.process.clinical-care-section {
+  padding-top: 92px;
+  padding-bottom: 92px;
+}
+
+.clinical-care-section .section-title {
+  max-width: 880px;
+}
+
+.clinical-care-section .section-title h2 {
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.clinical-care-section .clinical-intro {
+  max-width: 780px;
+  margin: 0;
+  color: rgba(255,255,255,.82);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.clinical-care-content {
+  max-width: 820px;
+  margin-top: 44px;
+  padding-top: 36px;
+  border-top: 1px solid rgba(255,255,255,.34);
+}
+
+.clinical-online-copy h3 {
+  margin: 0 0 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 400;
+  color: #fff;
+}
+
+.clinical-online-copy p {
+  margin: 0;
+  max-width: 780px;
+  color: rgba(255,255,255,.82);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.clinical-online-copy strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .process.clinical-care-section {
+    padding-top: 72px;
+    padding-bottom: 72px;
+  }
+
+  .clinical-care-content {
+    margin-top: 34px;
+    padding-top: 28px;
+  }
+
+  .clinical-care-section .clinical-intro,
+  .clinical-online-copy p {
+    font-size: 15px;
+  }
+}
