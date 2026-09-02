@@ -20,7 +20,7 @@ export const api = {
   me: () => request<any>('/api/me'),
   availability: (from?: string, to?: string) => request<any>(`/api/availability?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`),
   reserve: (slotId: string | number) => request<any>('/api/appointments/reserve', { method: 'POST', body: JSON.stringify({ slot_id: slotId }) }),
-  myAppointments: () => request<any>('/api/appointments/mine'),
+  myAppointments: () => request<any>('/api/appointments/mine').catch(() => ({ ok: true, appointments: [] })),
   cancelAppointment: (appointmentId: string | number) => request(`/api/appointments/${appointmentId}/cancel`, { method: 'POST' }),
   checkout: (appointmentId: string | number, method: 'pix' | 'card') => request<any>('/api/payments/checkout', { method: 'POST', body: JSON.stringify({ appointment_id: appointmentId, method }) }),
   adminLogin: (email: string, password: string) => request<any>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
