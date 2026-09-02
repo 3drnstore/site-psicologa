@@ -1,0 +1,3 @@
+.patient-page .availability-list:not(.patient-calendar-grid){visibility:hidden!important;opacity:0!important;pointer-events:none!important;min-height:520px!important}
+.patient-page .availability-list.patient-calendar-grid{visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+@media(max-width:900px){.patient-page .availability-list:not(.patient-calendar-grid){min-height:360px!important}}
