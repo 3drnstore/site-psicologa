@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import AppErrorBoundary from './AppErrorBoundary'
 import AdminSetup from './AdminSetup'
 import PasswordRecovery from './PasswordRecovery'
 import { installPasswordEnhancer } from './password-enhancer'
@@ -24,6 +25,7 @@ import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCtaSafe } from './homepage-cta-safe'
 import { installProfessionalIdentitySafe } from './professional-identity-safe'
 import { installAccessibilitySafe } from './accessibility-safe'
+import { installAppResilience } from './app-resilience'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -39,6 +41,7 @@ import './clinical-care-section.css'
 import './contact-section.css'
 import './homepage-cta-safe.css'
 import './accessibility-safe.css'
+import './app-resilience.css'
 
 const path = window.location.pathname
 
@@ -88,9 +91,10 @@ function RoutedApp() {
 }
 
 installD1FetchCache()
+installAppResilience()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><RoutedApp /></React.StrictMode>,
+  <React.StrictMode><AppErrorBoundary><RoutedApp /></AppErrorBoundary></React.StrictMode>,
 )
 installPasswordEnhancer()
 installAdminCalendarEnhancer()
