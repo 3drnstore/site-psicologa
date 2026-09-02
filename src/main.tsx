@@ -5,6 +5,7 @@ import AppErrorBoundary from './AppErrorBoundary'
 import AdminSetup from './AdminSetup'
 import PasswordRecovery from './PasswordRecovery'
 import StatusPage from './StatusPage'
+import PrivacyPage from './PrivacyPage'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
@@ -27,6 +28,7 @@ import { installHomepageCtaSafe } from './homepage-cta-safe'
 import { installProfessionalIdentitySafe } from './professional-identity-safe'
 import { installAccessibilitySafe } from './accessibility-safe'
 import { installAppResilience } from './app-resilience'
+import { installPrivacyLinksSafe } from './privacy-links-safe'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -44,6 +46,7 @@ import './homepage-cta-safe.css'
 import './accessibility-safe.css'
 import './app-resilience.css'
 import './status-page.css'
+import './privacy-page.css'
 
 const path = window.location.pathname
 
@@ -86,6 +89,7 @@ function PatientRouteGate() {
 
 function RoutedApp() {
   if (path === '/status' || path === '/status/') return <StatusPage />
+  if (path === '/privacidade' || path === '/privacidade/') return <PrivacyPage />
   if (path === '/admin/setup') return <AdminSetup />
   if (path === '/recuperar-senha') return <PasswordRecovery />
   if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
@@ -118,4 +122,5 @@ installProfessionalIdentitySafe()
 installContactSectionEnhancer()
 installHomepageCtaSafe()
 installAccessibilitySafe()
+installPrivacyLinksSafe()
 installPatientRouteSync()
