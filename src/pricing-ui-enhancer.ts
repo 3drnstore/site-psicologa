@@ -13,24 +13,36 @@ function ensureStyle(){
   .booking-summary[data-pricing-v2] .pricing-v2-copy{display:grid;gap:4px;flex:1 1 520px;color:#3f5750;font-size:14px;line-height:1.55;font-weight:500}
   .booking-summary[data-pricing-v2] .pricing-v2-copy p{margin:0;display:block}
   .booking-summary[data-pricing-v2] .pricing-v2-copy .pricing-v2-values{color:#294b44;font-weight:700;margin-top:3px}
-  .pricing-v2-admin{display:grid;gap:18px}.pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pricing-v2-admin label{display:grid;gap:7px;font-weight:700}.pricing-v2-admin input{width:100%;border:1px solid #d6dfda;border-radius:11px;padding:12px 13px;background:#fff;font:inherit}.pricing-v2-note{padding:12px 14px;border-radius:10px;background:#f4f7f5;color:#5f6e68;font-size:13px;line-height:1.5}.pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#edf6f0;color:#245a45}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}
+  .pricing-v2-admin{display:grid;gap:18px}.pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pricing-v2-admin label{display:grid;gap:7px;font-weight:700}.pricing-v2-admin input{width:100%;border:1px solid #d6dfda;border-radius:11px;padding:12px 13px;background:#fff;font:inherit}.pricing-v2-note{padding:12px 14px;border-radius:10px;background:#f4f7f5;color:#5f6e68;font-size:13px;line-height:1.5}.pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#edf6f0;color:#245a45}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}.pricing-v2-title{margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-size:26px;color:#173f38}
   @media(max-width:700px){.pricing-v2-admin .pricing-grid{grid-template-columns:1fr}.booking-summary[data-pricing-v2] .pricing-v2-copy{flex-basis:100%;text-align:left}}
   `;document.head.appendChild(style)
 }
 
 async function enhanceAdmin(){
   const panel=document.querySelector<HTMLElement>('.settings-panel')
-  const oldForm=panel?.querySelector<HTMLFormElement>('form.admin-form')
-  if(!panel||!oldForm||panel.querySelector('.pricing-v2-admin'))return
-  oldForm.style.display='none'
-  const data=await getJson('/api/admin/settings')
-  const s=data.settings||{}
+  if(!panel||panel.querySelector('.pricing-v2-admin'))return
+  const oldForm=panel.querySelector<HTMLFormElement>('form.admin-form')
+  let s:any={}
+  try{const data=await getJson('/api/admin/settings');s=data.settings||{}}
+  catch(err){
+    let msg=panel.querySelector<HTMLElement>('.pricing-v2-load-error')
+    if(!msg){msg=document.createElement('div');msg.className='pricing-v2-msg error pricing-v2-load-error';panel.prepend(msg)}
+    msg.textContent=err instanceof Error?err.message:String(err)
+    if(oldForm)oldForm.style.display='grid'
+    return
+  }
+
+  panel.querySelector('.pricing-v2-load-error')?.remove()
+  if(oldForm)oldForm.style.display='none'
+  const legacy=Number(s.consultation_price_cents||0)
+  const pix=Number(s.pix_price_cents??legacy)
+  const card=Number(s.card_price_cents??legacy)
   const form=document.createElement('form');form.className='pricing-v2-admin'
-  form.innerHTML=`<div class="pricing-v2-note">Os valores são apresentados ao paciente como condições de pagamento, sem linguagem promocional ou menção a desconto.</div><div class="pricing-grid"><label>Valor da sessão — Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(Number(s.pix_price_cents||0)/100).toFixed(2)}"></label><label>Valor da sessão — Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(Number(s.card_price_cents||s.consultation_price_cents||0)/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
+  form.innerHTML=`<div><h2 class="pricing-v2-title">Valores da sessão</h2><div class="pricing-v2-note">Defina separadamente os valores cobrados conforme a forma de pagamento. Eles serão apresentados ao paciente de forma informativa no fluxo de agendamento, sem linguagem promocional.</div></div><div class="pricing-grid"><label>Valor da sessão — Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(pix/100).toFixed(2)}"></label><label>Valor da sessão — Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(card/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
   panel.appendChild(form)
   form.addEventListener('submit',async e=>{
     e.preventDefault();const fd=new FormData(form),btn=form.querySelector<HTMLButtonElement>('button')!;btn.disabled=true
-    panel.querySelector('.pricing-v2-msg')?.remove()
+    form.querySelector('.pricing-v2-msg')?.remove()
     try{
       await putJson('/api/admin/settings',{pix_price_cents:Math.round(Number(fd.get('pix')||0)*100),card_price_cents:Math.round(Number(fd.get('card')||0)*100),appointment_duration_minutes:Number(fd.get('duration')||50),hold_minutes:Number(fd.get('hold')||15)})
       const msg=document.createElement('div');msg.className='pricing-v2-msg';msg.textContent='Valores e condições de atendimento salvos.';form.prepend(msg)
