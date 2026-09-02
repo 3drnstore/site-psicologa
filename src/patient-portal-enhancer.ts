@@ -38,7 +38,7 @@ function applyTab(page:HTMLElement,tab:PatientTab){
   main.querySelectorAll<HTMLElement>('.patient-account-panel').forEach(el=>el.style.display=el.dataset.accountPanel===tab?'':'none')
   const title=main.querySelector<HTMLElement>('.patient-portal-section-title')
   if(title){
-    const labels:Record<PatientTab,string>={agenda:'Agenda',consultas:'Minhas consultas',dados:'Meus Dados',seguranca:'Segurança'}
+    const labels:Record<PatientTab,string>={agenda:'Agenda',consultas:'Minhas consultas',dados:'Meus dados',seguranca:'Segurança'}
     title.textContent=labels[tab]
     title.style.display=tab==='agenda'?'none':''
   }
@@ -92,9 +92,10 @@ async function enhance(){
   try{
     page.classList.add('patient-portal-enhanced')
     main.querySelectorAll<HTMLElement>('.price-card').forEach(el=>el.style.display='none')
+    main.querySelectorAll<HTMLElement>('.patient-heading p').forEach(el=>el.remove())
     let sidebar=page.querySelector<HTMLElement>('.patient-sidebar')
     if(!sidebar){
-      sidebar=document.createElement('aside');sidebar.className='patient-sidebar';sidebar.innerHTML=`<div class="patient-sidebar-brand"><span>Minha área</span><strong>Portal do paciente</strong></div><nav><button data-patient-tab="agenda">Agenda</button><button data-patient-tab="consultas">Minhas consultas</button><button data-patient-tab="dados">Meus Dados</button><button data-patient-tab="seguranca">Segurança</button></nav><div class="patient-sidebar-foot"><small>Seus dados são privados e protegidos.</small></div>`
+      sidebar=document.createElement('aside');sidebar.className='patient-sidebar';sidebar.innerHTML=`<div class="patient-sidebar-brand"><span>Minha área</span><strong>Portal do paciente</strong></div><nav><button data-patient-tab="agenda">Agenda</button><button data-patient-tab="consultas">Minhas consultas</button><button data-patient-tab="dados">Meus dados</button><button data-patient-tab="seguranca">Segurança</button></nav><div class="patient-sidebar-foot"><small>Seus dados são privados e protegidos.</small></div>`
       const header=page.querySelector('.portal-header');header?.after(sidebar)
       sidebar.querySelectorAll<HTMLButtonElement>('[data-patient-tab]').forEach(button=>button.addEventListener('click',()=>applyTab(page,button.dataset.patientTab as PatientTab)))
     }
