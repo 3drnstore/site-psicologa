@@ -20,6 +20,7 @@ import { installPatientConsultationsEnhancer } from './patient-consultations-enh
 import { installD1FetchCache } from './d1-fetch-cache'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
 import { installContactSectionEnhancer } from './contact-section-enhancer'
+import { installPatientRouteSync } from './patient-route-sync'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -72,7 +73,8 @@ function RoutedApp() {
   if (path === '/admin/setup') return <AdminSetup />
   if (path === '/recuperar-senha') return <PasswordRecovery />
   if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
-  return <PatientRouteGate />
+  if (path === '/paciente' || path === '/paciente/') return <PatientRouteGate />
+  return <App />
 }
 
 installD1FetchCache()
@@ -96,3 +98,4 @@ installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
 installContactSectionEnhancer()
+installPatientRouteSync()
