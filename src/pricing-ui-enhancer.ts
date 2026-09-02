@@ -10,9 +10,9 @@ function ensureStyle(){
   const style=document.createElement('style');style.id='pricing-v2-style';style.textContent=`
   .booking-summary[data-pricing-v2]{background:#e7f0eb!important;border-color:#cfddd5!important}
   .booking-summary[data-pricing-v2] .patient-session-info{display:none!important}
-  .booking-summary[data-pricing-v2] .pricing-v2-copy{display:grid;gap:5px;flex:1 1 520px;color:#3f5750;font-size:14px;line-height:1.55;font-weight:500}
-  .booking-summary[data-pricing-v2] .pricing-v2-copy p{margin:0}
-  .booking-summary[data-pricing-v2] .pricing-v2-copy .pricing-v2-values{color:#294b44;font-weight:600}
+  .booking-summary[data-pricing-v2] .pricing-v2-copy{display:grid;gap:4px;flex:1 1 520px;color:#3f5750;font-size:14px;line-height:1.55;font-weight:500}
+  .booking-summary[data-pricing-v2] .pricing-v2-copy p{margin:0;display:block}
+  .booking-summary[data-pricing-v2] .pricing-v2-copy .pricing-v2-values{color:#294b44;font-weight:700;margin-top:3px}
   .pricing-v2-admin{display:grid;gap:18px}.pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pricing-v2-admin label{display:grid;gap:7px;font-weight:700}.pricing-v2-admin input{width:100%;border:1px solid #d6dfda;border-radius:11px;padding:12px 13px;background:#fff;font:inherit}.pricing-v2-note{padding:12px 14px;border-radius:10px;background:#f4f7f5;color:#5f6e68;font-size:13px;line-height:1.5}.pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#edf6f0;color:#245a45}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}
   @media(max-width:700px){.pricing-v2-admin .pricing-grid{grid-template-columns:1fr}.booking-summary[data-pricing-v2] .pricing-v2-copy{flex-basis:100%;text-align:left}}
   `;document.head.appendChild(style)
@@ -47,7 +47,7 @@ async function enhancePatient(){
   summary.dataset.pricingV2='1'
   let copy=summary.querySelector<HTMLElement>('.pricing-v2-copy')
   if(!copy){copy=document.createElement('div');copy.className='pricing-v2-copy';summary.prepend(copy)}
-  copy.innerHTML=`<p>Sessão online com duração de 50 minutos. O agendamento será confirmado após a confirmação do pagamento. O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão: Pix: ${money(pix)} - Cartão: ${money(card)}</p>`
+  copy.innerHTML=`<p>Sessão online com duração de 50 minutos.</p><p>O agendamento será confirmado após a confirmação do pagamento.</p><p>O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão: Pix: ${money(pix)} - Cartão: ${money(card)}</p>`
   const actions=summary.querySelector('.payment-actions')
   const buttons=actions?.querySelectorAll<HTMLButtonElement>('button')
   if(buttons&&buttons.length>=2){
