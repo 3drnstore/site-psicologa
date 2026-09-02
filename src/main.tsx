@@ -25,7 +25,6 @@ import { installProfessionalPresentationEnhancer } from './professional-presenta
 import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCtaSafe } from './homepage-cta-safe'
-import { installProfessionalIdentitySafe } from './professional-identity-safe'
 import { installAccessibilitySafe } from './accessibility-safe'
 import { installAppResilience } from './app-resilience'
 import { installPrivacyLinksSafe } from './privacy-links-safe'
@@ -153,7 +152,6 @@ installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
-installProfessionalIdentitySafe()
 installContactSectionEnhancer()
 installHomepageCtaSafe()
 installAccessibilitySafe()
