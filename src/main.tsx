@@ -8,7 +8,6 @@ import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installPatientBlockedEnhancer } from './patient-blocked-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
-import { installTestSeedEnhancer } from './test-seed-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -47,4 +46,3 @@ installAdminCalendarEnhancer()
 installAdminStateEnhancer()
 installPatientBlockedEnhancer()
 installAdminAppointmentEnhancer()
-installTestSeedEnhancer()
