@@ -10,6 +10,8 @@ const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.sta
 const monthYear=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(d).replace(/^./,c=>c.toUpperCase())
 const shortWeekday=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(d).replace(/^./,c=>c.toUpperCase())
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[c]||c))
+const waPhone=(v:unknown)=>{const d=String(v??'').replace(/\D/g,'');if(!d)return '';return d.startsWith('55')?d:`55${d}`}
+const gmailCompose=(email:string)=>`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}`
 
 class AdminCalendar {
   host:HTMLElement
@@ -109,9 +111,28 @@ class AdminCalendar {
 
   slotBody(s?:Slot){
     if(s&&(s.status==='confirmed'||s.status==='held')&&s.full_name){
-      return `<span class="gc-patient-name">${esc(s.full_name)}</span><span class="gc-patient-status">${s.status==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
+      return `<span class="gc-patient-name gc-patient-link" data-patient-contact="${esc(String(s.id))}">${esc(s.full_name)}</span><span class="gc-patient-status">${s.status==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
     }
     return `<span>${statusLabel(s)}</span>`
+  }
+
+  contactCard(s:Slot){
+    const phone=String(s.phone||'').trim(),email=String(s.email||'').trim(),wa=waPhone(phone)
+    return `<div class="gc-contact-popover" role="dialog" aria-label="Contato do paciente">
+      <div class="gc-contact-head"><strong>${esc(s.full_name||'Paciente')}</strong><button type="button" data-close-contact aria-label="Fechar">×</button></div>
+      <div class="gc-contact-lines">
+        ${phone?`<a href="https://wa.me/${wa}" target="_blank" rel="noopener noreferrer"><span>WhatsApp</span><strong>${esc(phone)}</strong></a>`:'<span>Telefone não informado</span>'}
+        ${email?`<a href="${gmailCompose(email)}" target="_blank" rel="noopener noreferrer"><span>E-mail</span><strong>${esc(email)}</strong></a>`:'<span>E-mail não informado</span>'}
+      </div>
+    </div>`
+  }
+
+  openContact(s:Slot,anchor:HTMLElement){
+    this.host.querySelector('.gc-contact-popover')?.remove()
+    anchor.insertAdjacentHTML('afterend',this.contactCard(s))
+    const pop=anchor.nextElementSibling as HTMLElement|null
+    pop?.querySelector('[data-close-contact]')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pop.remove()})
+    pop?.addEventListener('click',e=>e.stopPropagation())
   }
 
   render(){
@@ -165,7 +186,7 @@ class AdminCalendar {
     this.host.querySelectorAll<HTMLButtonElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>void this.bulk(b.dataset.bulk as BulkMode)))
     this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.anchorKey=null;this.paintSelection()})
     const map=new Map(this.allCells().map(c=>[this.key(c),c]))
-    this.host.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=map.get(String(el.dataset.cell));if(c)el.addEventListener('click',(event)=>this.toggle(c,el,(event as MouseEvent).shiftKey))})
+    this.host.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=map.get(String(el.dataset.cell));if(c)el.addEventListener('click',(event)=>{const target=event.target as HTMLElement|null;const contact=target?.closest<HTMLElement>('[data-patient-contact]');if(contact&&c.slot){event.preventDefault();event.stopPropagation();this.openContact(c.slot,contact);return}this.toggle(c,el,(event as MouseEvent).shiftKey)})})
   }
 }
 
