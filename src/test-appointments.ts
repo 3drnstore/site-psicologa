@@ -12,13 +12,27 @@ async function admin(request:Request,env:Env){
 }
 
 function dayKeySaoPaulo(value:string){
-  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value))
-}
-function weekdaySaoPaulo(value:string){
-  return new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).format(new Date(value))
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value))
+  const map=Object.fromEntries(parts.map(p=>[p.type,p.value]))
+  return `${map.year}-${map.month}-${map.day}`
 }
 async function tableExists(env:Env,name:string){
   return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
+}
+
+async function cleanupPreviousTests(env:Env){
+  const rows=await env.DB.prepare(`
+    SELECT a.id AS appointment_id,a.availability_id,p.id AS patient_id
+    FROM appointments a
+    JOIN patients p ON p.id=a.patient_id
+    WHERE p.email LIKE 'teste.%@example.invalid' OR p.full_name LIKE 'Paciente Teste%'
+  `).all<any>()
+  for(const row of rows.results||[]){
+    if(await tableExists(env,'payments')) await env.DB.prepare('DELETE FROM payments WHERE appointment_id=?').bind(row.appointment_id).run()
+    await env.DB.prepare('DELETE FROM appointments WHERE id=?').bind(row.appointment_id).run()
+    await env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('held','confirmed')`).bind(row.availability_id).run()
+  }
+  await env.DB.prepare(`DELETE FROM patients WHERE email LIKE 'teste.%@example.invalid' OR full_name LIKE 'Paciente Teste%'`).run()
 }
 
 export async function handleTestAppointments(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -26,34 +40,24 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
   const a=await admin(request,env)
   if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
 
-  const marker=await env.DB.prepare(`SELECT value FROM settings WHERE key='test_seed_appointments_v1'`).first<any>()
-  if(marker?.value==='done')return json({ok:true,already_done:true})
+  const marker=await env.DB.prepare(`SELECT value FROM settings WHERE key='test_seed_appointments_v2'`).first<any>()
+  if(marker?.value==='done')return json({ok:true,already_done:true,date:'2026-09-02'})
 
   if(!(await tableExists(env,'patients'))||!(await tableExists(env,'appointments'))){
     return json({ok:false,message:'As tabelas de pacientes/consultas ainda não estão prontas para o teste.'},409)
   }
 
-  const from=new Date();from.setHours(0,0,0,0)
-  const to=new Date(from);to.setDate(to.getDate()+120);to.setHours(23,59,59,999)
+  await cleanupPreviousTests(env)
 
   const rows=await env.DB.prepare(`
     SELECT id,starts_at,ends_at,status
     FROM availability
     WHERE status='free' AND COALESCE(public_visibility,'visible')='visible'
-      AND starts_at>=? AND starts_at<=?
     ORDER BY starts_at ASC
-  `).bind(from.toISOString(),to.toISOString()).all<any>()
+  `).all<any>()
 
-  const grouped=new Map<string,any[]>()
-  for(const row of rows.results||[]){
-    if(weekdaySaoPaulo(row.starts_at)!=='Wed')continue
-    const key=dayKeySaoPaulo(row.starts_at)
-    grouped.set(key,[...(grouped.get(key)||[]),row])
-  }
-  const candidate=[...grouped.entries()].find(([,items])=>items.length>=3)
-  if(!candidate)return json({ok:false,message:'Ainda não há uma quarta-feira com 3 horários livres para criar os testes.'},409)
-  const [firstDay,daySlots]=candidate
-  const slots=daySlots.slice(0,3)
+  const slots=(rows.results||[]).filter((r:any)=>dayKeySaoPaulo(r.starts_at)==='2026-09-02').slice(0,3)
+  if(slots.length<3)return json({ok:false,message:'02/09/2026 não possui 3 horários livres cadastrados para criar os testes.'},409)
 
   const priceRow=await env.DB.prepare(`SELECT value FROM settings WHERE key='consultation_price_cents'`).first<any>()
   const amount=Number(priceRow?.value||0)
@@ -83,6 +87,6 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
     created.push({appointment_id:Number(ar.meta.last_row_id),patient_id:patientId,availability_id:slots[i].id,status:appointmentStatus,starts_at:slots[i].starts_at})
   }
 
-  await env.DB.prepare(`INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('test_seed_appointments_v1','done',CURRENT_TIMESTAMP)`).run()
-  return json({ok:true,created,date:firstDay},201)
+  await env.DB.prepare(`INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('test_seed_appointments_v2','done',CURRENT_TIMESTAMP)`).run()
+  return json({ok:true,created,date:'2026-09-02'},201)
 }
