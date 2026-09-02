@@ -5,37 +5,27 @@ function applyProcessCopy(){
   const section=document.querySelector<HTMLElement>('.site-shell .process#como-funciona')
   if(!section)return
 
-  const title=section.querySelector<HTMLElement>('.section-title h2')
-  if(title)title.textContent='Como funciona o atendimento'
+  section.classList.add('clinical-care-section')
 
-  const steps=[...section.querySelectorAll<HTMLElement>('.steps > div')]
-  const copy=[
-    {
-      title:'Escolha um horário',
-      text:'Consulte os horários disponíveis e agende sua sessão diretamente pelo site.',
-    },
-    {
-      title:'Confirme seu agendamento',
-      text:'Após o pagamento, seu horário será confirmado e ficará reservado para você.',
-    },
-    {
-      title:'Receba o acesso à sessão',
-      text:'No dia do atendimento, você receberá o link para acessar a videochamada de forma simples e segura.',
-    },
-    {
-      title:'Seu momento de acolhimento',
-      text:'Em um espaço de escuta, respeito e confidencialidade, você poderá falar sobre o que está vivendo e iniciar ou dar continuidade ao seu processo terapêutico.',
-    },
-  ]
+  const titleBlock=section.querySelector<HTMLElement>('.section-title')
+  if(titleBlock){
+    titleBlock.innerHTML=`
+      <span class="section-kicker">Atendimento</span>
+      <h2>Atendimento clínico individual</h2>
+      <p class="clinical-intro">O atendimento clínico individual é orientado pela psicanálise e acontece semanalmente em um horário fixo, com sessões online de 50 minutos.</p>
+    `
+  }
 
-  steps.forEach((step,index)=>{
-    const item=copy[index]
-    if(!item)return
-    const heading=step.querySelector<HTMLElement>('h3')
-    const paragraph=step.querySelector<HTMLElement>('p')
-    if(heading)heading.textContent=item.title
-    if(paragraph)paragraph.textContent=item.text
-  })
+  const steps=section.querySelector<HTMLElement>('.steps')
+  if(steps){
+    steps.className='clinical-care-content'
+    steps.innerHTML=`
+      <div class="clinical-online-copy">
+        <h3>Atendimento On-line</h3>
+        <p>Utilizamos plataformas de vídeo como <strong>Google Meet, Zoom ou WhatsApp</strong> para proporcionar um ambiente virtual seguro e confortável. Essas opções de atendimento são acessíveis tanto para pacientes em todo o território nacional quanto para aqueles localizados no exterior.</p>
+      </div>
+    `
+  }
 }
 
 export function installHomepageProcessCopy(){
