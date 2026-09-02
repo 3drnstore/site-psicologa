@@ -25,6 +25,15 @@ const apiError = (message: string, detail?: string) => new Response(JSON.stringi
   headers: { 'content-type': 'application/json; charset=utf-8' },
 })
 
+function withPrivateRouteHeaders(response: Response, path: string) {
+  const privateRoute = path === '/admin' || path.startsWith('/admin/') || path === '/paciente' || path.startsWith('/paciente/') || path === '/recuperar-senha'
+  if (!privateRoute) return response
+  const headers = new Headers(response.headers)
+  headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive')
+  headers.set('Cache-Control', 'private, no-store')
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
@@ -140,6 +149,7 @@ export default {
       if (response) return response
     }
 
-    return worker.fetch(request, env, ctx as any)
+    const response = await worker.fetch(request, env, ctx as any)
+    return withPrivateRouteHeaders(response, path)
   },
 }
