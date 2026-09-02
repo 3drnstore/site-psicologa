@@ -7,12 +7,14 @@ import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
+import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
 import './admin-calendar.css'
 import './patient-calendar.css'
+import './patient-portal.css'
 
 const path = window.location.pathname
 
@@ -46,4 +48,5 @@ installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
 installPatientCalendarEnhancer()
+installPatientPortalEnhancer()
 installAdminAppointmentEnhancer()
