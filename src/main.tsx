@@ -28,6 +28,7 @@ import { installHomepageCtaSafe } from './homepage-cta-safe'
 import { installAccessibilitySafe } from './accessibility-safe'
 import { installAppResilience } from './app-resilience'
 import { installPrivacyLinksSafe } from './privacy-links-safe'
+import { installProfessionalPhotoTest } from './professional-photo-test'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -46,6 +47,7 @@ import './accessibility-safe.css'
 import './app-resilience.css'
 import './status-page.css'
 import './privacy-page.css'
+import './professional-photo-test.css'
 
 const path = window.location.pathname
 
@@ -156,3 +158,4 @@ installHomepageCtaSafe()
 installAccessibilitySafe()
 installPrivacyLinksSafe()
 installPatientRouteSync()
+installProfessionalPhotoTest()
