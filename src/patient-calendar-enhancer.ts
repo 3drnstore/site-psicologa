@@ -13,6 +13,7 @@ let weekCursor:Date|null=null
 
 function isoDateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
 function mobileDateLabel(value:string){return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date(value))}
+function isMobile(){return window.matchMedia('(max-width: 900px)').matches}
 
 function weekMonthLabel(start:Date,end:Date){
   const sameYear=start.getFullYear()===end.getFullYear()
@@ -22,13 +23,44 @@ function weekMonthLabel(start:Date,end:Date){
   return `${monthShort(start)}/${String(start.getFullYear()).slice(-2)}-${monthShort(end)}/${String(end.getFullYear()).slice(-2)}`
 }
 
-function surfaceReserveAction(){
-  if(!window.matchMedia('(max-width: 900px)').matches)return
+function forceMobileSection(section:HTMLElement){
+  if(!isMobile())return
+  section.style.setProperty('width','100%','important')
+  section.style.setProperty('max-width','100%','important')
+  section.style.setProperty('padding','22px','important')
+  section.style.setProperty('border','1px solid #dfe5e1','important')
+  section.style.setProperty('border-radius','24px','important')
+  section.style.setProperty('background','#fff','important')
+  section.style.setProperty('box-shadow','0 8px 24px rgba(23,63,57,.04)','important')
+  const h2=section.querySelector<HTMLElement>('h2')
+  if(h2){
+    h2.style.setProperty('display','flex','important')
+    h2.style.setProperty('align-items','center','important')
+    h2.style.setProperty('justify-content','flex-start','important')
+    h2.style.setProperty('gap','10px','important')
+    h2.style.setProperty('margin','0 0 18px','important')
+    h2.innerHTML=`<span style="font-size:22px;line-height:1;color:#173f39">▣</span><span style="display:inline!important;font-size:18px;font-weight:800;color:#213d38">${section.dataset.mobileDateLabel||''}</span>`
+  }
+  const grid=section.querySelector<HTMLElement>('.time-grid')
+  if(grid){
+    grid.style.setProperty('display','grid','important')
+    grid.style.setProperty('grid-template-columns','repeat(2,minmax(0,1fr))','important')
+    grid.style.setProperty('gap','12px','important')
+  }
+}
+
+function surfaceReserveAction(button:HTMLButtonElement){
+  if(!isMobile())return
   window.setTimeout(()=>{
     const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
-    if(!summary)return
+    const section=button.closest<HTMLElement>('.availability-day.patient-calendar-day')
+    if(!summary||!section)return
+    section.insertAdjacentElement('afterend',summary)
+    summary.style.setProperty('display','grid','important')
+    summary.style.setProperty('width','100%','important')
+    summary.style.setProperty('margin','12px 0 6px','important')
     summary.scrollIntoView({behavior:'smooth',block:'center'})
-  },90)
+  },100)
 }
 
 async function enhance(){
@@ -43,10 +75,7 @@ async function enhance(){
     const data=await r.json().catch(()=>({})) as any
     const slots:any[]=data.slots||[]
     const byDay=new Map<string,any[]>()
-    slots.forEach(slot=>{
-      const key=dayLabel(slot.starts_at)
-      byDay.set(key,[...(byDay.get(key)||[]),slot])
-    })
+    slots.forEach(slot=>{const key=dayLabel(slot.starts_at);byDay.set(key,[...(byDay.get(key)||[]),slot])})
 
     document.querySelectorAll<HTMLElement>('.availability-day').forEach(section=>{
       const h2=section.querySelector<HTMLElement>('h2')
@@ -58,10 +87,10 @@ async function enhance(){
       if(first){
         section.dataset.patientDate=first.starts_at
         section.dataset.mobileDateLabel=mobileDateLabel(first.starts_at)
-        h2.dataset.mobileDateLabel=mobileDateLabel(first.starts_at)
-        h2.innerHTML=`<strong>${dayNumber(first.starts_at)}</strong><span>${weekday(first.starts_at)}</span>`
+        if(!isMobile())h2.innerHTML=`<strong>${dayNumber(first.starts_at)}</strong><span>${weekday(first.starts_at)}</span>`
       }
       section.classList.add('patient-calendar-day')
+      let freeCount=0
       section.querySelectorAll<HTMLButtonElement>('.time').forEach(button=>{
         button.classList.add('patient-calendar-slot')
         const match=(button.textContent||'').match(/(\d{2}:\d{2})/)
@@ -71,30 +100,40 @@ async function enhance(){
         const status=slot.public_status||'occupied'
         button.dataset.publicStatus=status
         let label=button.querySelector<HTMLElement>('[data-patient-status]')
-        if(!label){
-          const existing=button.querySelector<HTMLElement>('span')
-          label=existing||document.createElement('span')
-          label.dataset.patientStatus='1'
-          if(!existing)button.appendChild(label)
+        if(!label){const existing=button.querySelector<HTMLElement>('span');label=existing||document.createElement('span');label.dataset.patientStatus='1';if(!existing)button.appendChild(label)}
+        if(status==='blocked'){label.textContent='Bloqueado';button.classList.add('blocked')}
+        else if(status==='occupied'){label.textContent='Ocupado';button.classList.remove('blocked')}
+        else{
+          freeCount++
+          label.textContent='Disponível';button.classList.remove('blocked')
+          if(!button.dataset.reserveSurfaceBound){button.dataset.reserveSurfaceBound='1';button.addEventListener('click',()=>surfaceReserveAction(button))}
         }
-        if(status==='blocked'){
-          label.textContent='Bloqueado'
-          button.classList.add('blocked')
-        }else if(status==='occupied'){
-          label.textContent='Ocupado'
-          button.classList.remove('blocked')
-        }else{
-          label.textContent='Disponível'
-          button.classList.remove('blocked')
-          if(!button.dataset.reserveSurfaceBound){
-            button.dataset.reserveSurfaceBound='1'
-            button.addEventListener('click',surfaceReserveAction)
+        if(isMobile()){
+          if(status!=='free')button.style.setProperty('display','none','important')
+          else{
+            button.style.setProperty('display','grid','important')
+            button.style.setProperty('min-height','66px','important')
+            button.style.setProperty('border-radius','14px','important')
+            button.style.setProperty('background','#f7f9f7','important')
+            button.style.setProperty('border-color','#dce4df','important')
+            button.style.setProperty('color','#35534c','important')
+            if(label)label.style.setProperty('display','none','important')
           }
         }
       })
+      if(isMobile()){
+        forceMobileSection(section)
+        section.dataset.mobileHasFree=freeCount>0?'1':'0'
+      }
     })
 
     list.classList.add('patient-calendar-grid')
+    if(isMobile()){
+      list.style.setProperty('display','grid','important')
+      list.style.setProperty('grid-template-columns','1fr','important')
+      list.style.setProperty('gap','18px','important')
+      list.style.setProperty('overflow','hidden','important')
+    }
     if(!weekCursor)weekCursor=mondayOf(new Date())
     const sections=[...document.querySelectorAll<HTMLElement>('.availability-day.patient-calendar-day')]
 
@@ -105,7 +144,9 @@ async function enhance(){
         const raw=section.dataset.patientDate
         if(!raw){section.style.display='none';return}
         const date=new Date(raw);date.setHours(0,0,0,0)
-        section.style.display=date>=start&&date<=end?'':'none'
+        const inWeek=date>=start&&date<=end
+        const mobileVisible=!isMobile()||section.dataset.mobileHasFree==='1'
+        section.style.setProperty('display',inWeek&&mobileVisible?'block':'none','important')
       })
       const toolbar=document.querySelector<HTMLElement>('.patient-calendar-toolbar')
       const period=toolbar?.querySelector<HTMLElement>('.patient-calendar-period')
@@ -117,9 +158,7 @@ async function enhance(){
     if(!toolbar){
       const saved=localStorage.getItem('patientCalendarWeek')
       if(saved){const parsed=new Date(`${saved}T12:00:00`);if(!Number.isNaN(parsed.getTime()))weekCursor=mondayOf(parsed)}
-      toolbar=document.createElement('div')
-      toolbar.className='patient-calendar-toolbar'
-      toolbar.innerHTML=`<button type="button" class="patient-calendar-nav" data-week="prev" aria-label="Semana anterior">‹</button><div class="patient-calendar-period"></div><button type="button" class="patient-calendar-nav" data-week="next" aria-label="Próxima semana">›</button>`
+      toolbar=document.createElement('div');toolbar.className='patient-calendar-toolbar';toolbar.innerHTML=`<button type="button" class="patient-calendar-nav" data-week="prev" aria-label="Semana anterior">‹</button><div class="patient-calendar-period"></div><button type="button" class="patient-calendar-nav" data-week="next" aria-label="Próxima semana">›</button>`
       list.before(toolbar)
       toolbar.querySelector('[data-week="prev"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),-7);applyWeek()})
       toolbar.querySelector('[data-week="next"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),7);applyWeek()})
@@ -129,10 +168,6 @@ async function enhance(){
 }
 
 export function installPatientCalendarEnhancer(){
-  const schedule=()=>{
-    if(scheduled)window.clearTimeout(scheduled)
-    scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},120)
-  }
-  schedule()
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
+  const schedule=()=>{if(scheduled)window.clearTimeout(scheduled);scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},120)}
+  schedule();new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
 }
