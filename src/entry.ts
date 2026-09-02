@@ -1,5 +1,4 @@
 import worker from './worker'
-import { ensureSchema } from './schema'
 import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
@@ -14,9 +13,7 @@ import { handlePublicAvailabilityV3 } from './public-availability-v3'
 import { handlePatientReserveV2 } from './patient-reserve-v2'
 import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
-import { ensureAgendaSchema } from './agenda-schema'
 import { ensurePaymentSchemaV2 } from './payment-schema-v2'
-import { cleanupLegacyAgenda } from './agenda-normalize'
 import { handleContactApi } from './contact-api'
 import type { Env } from './types'
 
@@ -107,12 +104,6 @@ export default {
 
     if (isAgendaRoute) {
       try {
-        await ensureAgendaSchema(env)
-
-        if (path.startsWith('/api/admin/')) {
-          await cleanupLegacyAgenda(env)
-        }
-
         if (path === '/api/admin/availability' && request.method === 'POST') {
           const response = await handleAgendaCreate(request, env, path)
           if (response) return response
@@ -141,8 +132,6 @@ export default {
         return apiError('Erro interno da Agenda. O sistema já identificou a causa técnica.', detail)
       }
     }
-
-    if (path.startsWith('/api/')) await ensureSchema(env)
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
