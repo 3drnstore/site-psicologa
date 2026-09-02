@@ -4,7 +4,7 @@ const weekday=(value:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).
 const timeOnly=(value:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(value))
 const addDays=(value:Date,n:number)=>{const d=new Date(value);d.setDate(d.getDate()+n);return d}
 const mondayOf=(value:Date)=>{const d=new Date(value.getFullYear(),value.getMonth(),value.getDate());const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));d.setHours(0,0,0,0);return d}
-const monthName=(value:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'long'}).format(value).replace(/^./,c=>c.toUpperCase())
+const monthShort=(value:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(value).replace('.','').slice(0,3).toUpperCase()
 
 let running=false
 let scheduled:number|undefined
@@ -13,10 +13,11 @@ let weekCursor:Date|null=null
 function isoDateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
 
 function weekMonthLabel(start:Date,end:Date){
-  const sameMonth=start.getMonth()===end.getMonth()&&start.getFullYear()===end.getFullYear()
-  if(sameMonth)return `${monthName(start)} de ${start.getFullYear()}`
-  if(start.getFullYear()===end.getFullYear())return `${monthName(start)}/${monthName(end)} de ${start.getFullYear()}`
-  return `${monthName(start)} de ${start.getFullYear()}/${monthName(end)} de ${end.getFullYear()}`
+  const sameYear=start.getFullYear()===end.getFullYear()
+  const sameMonth=sameYear&&start.getMonth()===end.getMonth()
+  if(sameMonth)return monthShort(start)
+  if(sameYear)return `${monthShort(start)}-${monthShort(end)}`
+  return `${monthShort(start)}/${String(start.getFullYear()).slice(-2)}-${monthShort(end)}/${String(end.getFullYear()).slice(-2)}`
 }
 
 async function enhance(){
