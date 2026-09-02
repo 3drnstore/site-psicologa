@@ -12,7 +12,11 @@ function ensureStyle(){
   if(document.getElementById('patient-welcome-style'))return
   const style=document.createElement('style')
   style.id='patient-welcome-style'
-  style.textContent=`.patient-sidebar-welcome{margin-top:7px;font-size:13px;line-height:1.4;color:rgba(255,255,255,.82);font-weight:500}.patient-sidebar-welcome strong{font-size:inherit;color:#fff;font-weight:700}`
+  style.textContent=`
+  .patient-sidebar-brand .patient-sidebar-welcome{display:block!important;visibility:visible!important;opacity:1!important;width:100%;margin-top:7px;font-size:13px!important;line-height:1.4;color:rgba(255,255,255,.82)!important;font-weight:500!important;white-space:normal}
+  .patient-sidebar-brand .patient-sidebar-welcome strong{display:inline!important;font-size:inherit!important;color:#fff!important;font-weight:700!important}
+  @media(min-width:901px){.patient-sidebar-brand{overflow:visible!important}.patient-sidebar-brand .patient-sidebar-welcome{position:relative!important;z-index:2!important}}
+  `
   document.head.appendChild(style)
 }
 
