@@ -23,6 +23,7 @@ import './admin-calendar.css'
 import './patient-calendar.css'
 import './patient-calendar-boot.css'
 import './patient-portal.css'
+import './patient-booking-khaki.css'
 import './patient-selection-fix.css'
 
 const path = window.location.pathname
