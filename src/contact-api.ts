@@ -14,6 +14,18 @@ export async function handleContactApi(request: Request, env: Env, path: string)
   const email = String(body?.email || '').trim().toLowerCase()
   const phone = String(body?.phone || '').trim()
   const message = String(body?.message || '').trim()
+  const honeypot = String(body?.website || '').trim()
+  const startedAt = Number(body?.started_at || 0)
+
+  // Bots simples costumam preencher campos invisíveis ou enviar o formulário instantaneamente.
+  // Respondemos como sucesso para não ensinar o mecanismo de proteção ao remetente automático.
+  if (honeypot) return json({ ok: true, message: 'Mensagem enviada com sucesso.' })
+  if (startedAt > 0) {
+    const elapsed = Date.now() - startedAt
+    if (elapsed < 1800 || elapsed > 24 * 60 * 60 * 1000) {
+      return json({ ok: true, message: 'Mensagem enviada com sucesso.' })
+    }
+  }
 
   if (!name || !email || !phone || !message) {
     return json({ ok: false, message: 'Preencha todos os campos.' }, 400)
@@ -24,18 +36,6 @@ export async function handleContactApi(request: Request, env: Env, path: string)
   if (name.length > 120 || email.length > 160 || phone.length > 30 || message.length > 3000) {
     return json({ ok: false, message: 'Um ou mais campos ultrapassaram o tamanho permitido.' }, 400)
   }
-
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS contact_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      message TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'new',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run()
 
   await env.DB.prepare(`
     INSERT INTO contact_messages (name, email, phone, message)
