@@ -18,6 +18,7 @@ import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
 import { installD1FetchCache } from './d1-fetch-cache'
+import { installHomepageProcessCopy } from './homepage-process-copy'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -89,3 +90,4 @@ installPricingUiEnhancer()
 installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
+installHomepageProcessCopy()
