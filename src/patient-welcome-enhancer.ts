@@ -20,22 +20,45 @@ function ensureStyle(){
   document.head.appendChild(style)
 }
 
+function cachedPatient(){
+  try{
+    const raw=sessionStorage.getItem('ps_recent_patient')
+    return raw?JSON.parse(raw):null
+  }catch{return null}
+}
+
+function appendWelcome(brand:HTMLElement,fullName:string){
+  if(brand.querySelector('.patient-sidebar-welcome'))return
+  const name=displayName(fullName)
+  const welcome=document.createElement('div')
+  welcome.className='patient-sidebar-welcome'
+  welcome.innerHTML=`Bem vindo, <strong>${name.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":'&#39;'}[c]||c))}</strong>`
+  brand.appendChild(welcome)
+}
+
 async function enhance(){
   if(running)return
   const sidebar=document.querySelector<HTMLElement>('.patient-sidebar')
   const brand=sidebar?.querySelector<HTMLElement>('.patient-sidebar-brand')
   if(!sidebar||!brand||brand.querySelector('.patient-sidebar-welcome'))return
+
+  const cached=cachedPatient()
+  if(cached?.full_name){appendWelcome(brand,String(cached.full_name));return}
+
   running=true
   try{
-    const response=await fetch('/api/me',{credentials:'include'})
+    const response=await fetch('/api/me',{credentials:'include',cache:'no-store'})
     if(!response.ok)return
     const data=await response.json().catch(()=>({})) as any
-    const name=displayName(data?.patient?.full_name||'')
-    const welcome=document.createElement('div')
-    welcome.className='patient-sidebar-welcome'
-    welcome.innerHTML=`Bem vindo, <strong>${name.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":'&#39;'}[c]||c))}</strong>`
-    brand.appendChild(welcome)
+    appendWelcome(brand,String(data?.patient?.full_name||''))
   }finally{running=false}
+}
+
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.patient-page,.patient-sidebar,.patient-sidebar-brand')||Boolean(node.querySelector('.patient-page,.patient-sidebar,.patient-sidebar-brand'))
+  }))
 }
 
 export function installPatientWelcomeEnhancer(){
@@ -45,5 +68,7 @@ export function installPatientWelcomeEnhancer(){
   }
   ensureStyle()
   schedule()
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',schedule)
 }
