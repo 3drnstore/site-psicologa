@@ -1,0 +1,19 @@
+{
+  "name": "Jacqueline Siqueira • Psicologia",
+  "short_name": "Jacqueline Psicologia",
+  "description": "Psicoterapia online em Terapia Cognitivo-Comportamental (TCC) com Jacqueline Siqueira, CRP 06/212470.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ed",
+  "theme_color": "#173f38",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
