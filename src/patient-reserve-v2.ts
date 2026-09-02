@@ -54,6 +54,9 @@ async function ensureReserveSchema(env:Env){
   await addColumn(env,'appointments','created_at','TEXT')
   await addColumn(env,'appointments','updated_at','TEXT')
 
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_appointments_patient_availability_status ON appointments(patient_id,availability_id,status)`).run()
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_appointments_status_reserved_until ON appointments(status,reserved_until)`).run()
+
   await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('consultation_price_cents','0')`).run()
   await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('card_price_cents','0')`).run()
   await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('pix_price_cents','0')`).run()
