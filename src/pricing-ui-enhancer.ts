@@ -61,22 +61,42 @@ async function enhanceAdmin(){
 
 async function enhancePatient(){
   const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
-  if(!summary)return
-  const data=await getJson('/api/availability')
-  const pix=Number(data.pix_price_cents??data.consultation_price_cents??0)
-  const card=Number(data.card_price_cents??data.consultation_price_cents??0)
-  summary.dataset.pricingV2='1'
-  let copy=summary.querySelector<HTMLElement>('.pricing-v2-copy')
-  if(!copy){copy=document.createElement('div');copy.className='pricing-v2-copy';summary.prepend(copy)}
-  copy.innerHTML=`<p>Sessão online com duração de 50 minutos.</p><p>O agendamento será confirmado após a confirmação do pagamento.</p><p>O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão: Pix: ${money(pix)} - Cartão: ${money(card)}</p>`
-  const actions=summary.querySelector('.payment-actions')
-  const buttons=actions?.querySelectorAll<HTMLButtonElement>('button')
-  if(buttons&&buttons.length>=2){
-    const pixText=`Pix — ${money(pix)}`;const cardText=`Cartão — ${money(card)}`
-    if(buttons[0].textContent!==pixText)buttons[0].textContent=pixText
-    if(buttons[1].textContent!==cardText)buttons[1].textContent=cardText
+  if(!summary||summary.dataset.pricingV2Loaded==='1')return
+  summary.dataset.pricingV2Loaded='1'
+  try{
+    const data=await getJson('/api/availability')
+    const pix=Number(data.pix_price_cents??data.consultation_price_cents??0)
+    const card=Number(data.card_price_cents??data.consultation_price_cents??0)
+    summary.dataset.pricingV2='1'
+    let copy=summary.querySelector<HTMLElement>('.pricing-v2-copy')
+    if(!copy){copy=document.createElement('div');copy.className='pricing-v2-copy';summary.prepend(copy)}
+    copy.innerHTML=`<p>Sessão online com duração de 50 minutos.</p><p>O agendamento será confirmado após a confirmação do pagamento.</p><p>O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão: Pix: ${money(pix)} - Cartão: ${money(card)}</p>`
+    const actions=summary.querySelector('.payment-actions')
+    const buttons=actions?.querySelectorAll<HTMLButtonElement>('button')
+    if(buttons&&buttons.length>=2){
+      const pixText=`Pix — ${money(pix)}`;const cardText=`Cartão — ${money(card)}`
+      if(buttons[0].textContent!==pixText)buttons[0].textContent=pixText
+      if(buttons[1].textContent!==cardText)buttons[1].textContent=cardText
+    }
+  }catch(err){
+    delete summary.dataset.pricingV2Loaded
+    throw err
   }
 }
 
 async function enhance(){if(running)return;running=true;try{ensureStyle();if(document.querySelector('.admin-page'))await enhanceAdmin();if(document.querySelector('.patient-page'))await enhancePatient()}catch(err){console.error('Pricing UI enhancer:',err)}finally{running=false}}
-export function installPricingUiEnhancer(){const schedule=()=>{if(scheduled)clearTimeout(scheduled);scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},140)};schedule();new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})}
+
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.settings-panel,.patient-page,.booking-summary,.payment-actions')||Boolean(node.querySelector('.settings-panel,.patient-page,.booking-summary,.payment-actions'))
+  }))
+}
+
+export function installPricingUiEnhancer(){
+  const schedule=()=>{if(scheduled)clearTimeout(scheduled);scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},140)}
+  schedule()
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',schedule)
+}
