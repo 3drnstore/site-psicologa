@@ -16,6 +16,7 @@ const TTL:Record<string,number>={
   '/api/admin/availability-v2':30000,
 }
 const ERROR_TTL=5000
+const PAYMENT_STATUS_TTL=12000
 
 function sameOriginUrl(input:RequestInfo|URL){
   try{
@@ -28,6 +29,7 @@ function ttlFor(path:string){
   if(TTL[path])return TTL[path]
   if(path.startsWith('/api/availability?'))return TTL['/api/availability']
   if(path.startsWith('/api/admin/availability-v2?'))return TTL['/api/admin/availability-v2']
+  if(path.startsWith('/api/payments/status/'))return PAYMENT_STATUS_TTL
   return 0
 }
 
