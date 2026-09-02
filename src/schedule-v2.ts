@@ -76,11 +76,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const to = url.searchParams.get('to') || new Date(Date.now()+60*86400000).toISOString()
     const result = await env.DB.prepare(`
       SELECT id,starts_at,ends_at,status,
-        CASE
-          WHEN status='free' THEN 'free'
-          WHEN status='blocked' THEN 'blocked'
-          ELSE 'occupied'
-        END AS public_status
+        CASE WHEN status='free' THEN 'free' WHEN status='blocked' THEN 'blocked' ELSE 'occupied' END AS public_status
       FROM availability
       WHERE COALESCE(public_visibility,'visible')='visible' AND starts_at>=? AND starts_at<=?
       ORDER BY starts_at ASC
@@ -98,7 +94,23 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || new Date(Date.now()+730*86400000).toISOString()
-    const slots = await env.DB.prepare(`SELECT id,starts_at,ends_at,status,COALESCE(public_visibility,'visible') AS public_visibility,COALESCE(source,'manual') AS source,recurring_block_id FROM availability WHERE starts_at>=? AND starts_at<=? ORDER BY starts_at`).bind(from,to).all<any>()
+    let slots:any
+    if (await tableExists(env,'appointments') && await tableExists(env,'patients')) {
+      slots = await env.DB.prepare(`
+        SELECT av.id,av.starts_at,av.ends_at,av.status,
+          COALESCE(av.public_visibility,'visible') AS public_visibility,
+          COALESCE(av.source,'manual') AS source,av.recurring_block_id,
+          a.id AS appointment_id,a.status AS appointment_status,a.amount_cents,a.paid_at,a.reserved_until,
+          p.id AS patient_id,p.full_name,p.email,p.phone
+        FROM availability av
+        LEFT JOIN appointments a ON a.availability_id=av.id AND a.status IN ('pending_payment','confirmed')
+        LEFT JOIN patients p ON p.id=a.patient_id
+        WHERE av.starts_at>=? AND av.starts_at<=?
+        ORDER BY av.starts_at
+      `).bind(from,to).all<any>()
+    } else {
+      slots = await env.DB.prepare(`SELECT id,starts_at,ends_at,status,COALESCE(public_visibility,'visible') AS public_visibility,COALESCE(source,'manual') AS source,recurring_block_id FROM availability WHERE starts_at>=? AND starts_at<=? ORDER BY starts_at`).bind(from,to).all<any>()
+    }
     const rules = await env.DB.prepare(`SELECT * FROM recurring_blocks ORDER BY active DESC,weekday,start_time`).all<any>()
     return json({ ok:true, slots:slots.results||[], recurring_blocks:rules.results||[] })
   }
@@ -158,12 +170,8 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const data=await request.json().catch(()=>({})) as any
     const active=Boolean(data.active)
     await env.DB.prepare(`UPDATE recurring_blocks SET active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(active?1:0,id).run()
-    if (!active) {
-      await env.DB.prepare(`UPDATE availability SET status='free',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE recurring_block_id=? AND status='blocked' AND starts_at>?`).bind(id,nowIso()).run()
-    } else {
-      const rule=await env.DB.prepare(`SELECT * FROM recurring_blocks WHERE id=?`).bind(id).first<any>()
-      if (rule) await materializeRule(env,rule)
-    }
+    if (!active) await env.DB.prepare(`UPDATE availability SET status='free',source='manual',recurring_block_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE recurring_block_id=? AND status='blocked' AND starts_at>?`).bind(id,nowIso()).run()
+    else { const rule=await env.DB.prepare(`SELECT * FROM recurring_blocks WHERE id=?`).bind(id).first<any>(); if (rule) await materializeRule(env,rule) }
     return json({ ok:true,active })
   }
 
