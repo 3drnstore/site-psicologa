@@ -5,13 +5,44 @@ const ADMIN_COOKIE='ps_admin_session', PATIENT_COOKIE='ps_session', SESSION_SECO
 const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8',...headers}})
 const now=()=>new Date().toISOString()
 const expires=(minutes:number)=>new Date(Date.now()+minutes*60000).toISOString()
+const digits=(value:string)=>value.replace(/\D/g,'')
 
 async function data(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 
 async function ensureAuthSchema(env:Env){
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS patients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    birth_date TEXT NOT NULL,
+    cpf TEXT NOT NULL UNIQUE,
+    phone TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    password_salt TEXT,
+    google_sub TEXT UNIQUE,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run()
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS admin_sessions (id TEXT PRIMARY KEY, admin_user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, patient_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_reset_tokens (id TEXT PRIMARY KEY, account_type TEXT NOT NULL, account_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
+}
+
+async function createPatientSession(env:Env,patientId:number){
+  const token=randomToken(), tokenHash=await sha256(token)
+  await env.DB.prepare('INSERT INTO sessions (id,patient_id,token_hash,expires_at) VALUES (?,?,?,?)')
+    .bind(crypto.randomUUID(),patientId,tokenHash,new Date(Date.now()+SESSION_SECONDS*1000).toISOString()).run()
+  return token
+}
+
+async function patientFromRequest(request:Request,env:Env){
+  const token=readCookie(request,PATIENT_COOKIE)
+  if(!token)return null
+  return env.DB.prepare(`SELECT p.id,p.full_name,p.birth_date,p.cpf,p.phone,p.email,p.email_verified
+    FROM sessions s JOIN patients p ON p.id=s.patient_id
+    WHERE s.token_hash=? AND s.expires_at>?`)
+    .bind(await sha256(token),now()).first<any>()
 }
 
 async function sendResetEmail(env:Env,email:string,link:string){
@@ -21,9 +52,55 @@ async function sendResetEmail(env:Env,email:string,link:string){
 }
 
 export async function handleAuthV2(request:Request,env:Env,path:string):Promise<Response|null>{
-  const handled=['/api/admin/login','/api/admin/logout','/api/admin/me','/api/password/forgot','/api/password/reset']
+  const handled=['/api/auth/register','/api/auth/login','/api/auth/logout','/api/me','/api/admin/login','/api/admin/logout','/api/admin/me','/api/password/forgot','/api/password/reset']
   if(!handled.includes(path)) return null
   await ensureAuthSchema(env)
+
+  if(path==='/api/auth/register' && request.method==='POST'){
+    try{
+      const b=await data(request)
+      const fullName=String(b.full_name||'').trim()
+      const birthDate=String(b.birth_date||'').trim()
+      const cpf=digits(String(b.cpf||''))
+      const phone=digits(String(b.phone||''))
+      const email=String(b.email||'').trim().toLowerCase()
+      const password=String(b.password||'')
+      if(!fullName||!birthDate||cpf.length!==11||phone.length<10||!email.includes('@')||password.length<8){
+        return json({ok:false,message:'Preencha corretamente todos os campos. A senha deve ter pelo menos 8 caracteres.'},400)
+      }
+      const existing=await env.DB.prepare('SELECT id,email,cpf FROM patients WHERE email=? OR cpf=?').bind(email,cpf).first<any>()
+      if(existing)return json({ok:false,message:'Já existe um cadastro com este e-mail ou CPF.'},409)
+      const pwd=await hashPassword(password)
+      const result=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,password_hash,password_salt) VALUES (?,?,?,?,?,?,?)`)
+        .bind(fullName,birthDate,cpf,phone,email,pwd.hash,pwd.salt).run()
+      const patientId=Number(result.meta.last_row_id)
+      const token=await createPatientSession(env,patientId)
+      return json({ok:true,patient:{id:patientId,full_name:fullName,email}},201,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
+    }catch(error){
+      const detail=error instanceof Error?error.message:String(error)
+      console.error('Patient register error:',detail)
+      return json({ok:false,message:'Não foi possível criar o cadastro do paciente.',detail},500)
+    }
+  }
+
+  if(path==='/api/auth/login' && request.method==='POST'){
+    const b=await data(request), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
+    const patient=await env.DB.prepare('SELECT id,full_name,email,password_hash,password_salt FROM patients WHERE email=?').bind(email).first<any>()
+    if(!patient?.password_hash||!patient?.password_salt||!(await verifyPassword(password,patient.password_salt,patient.password_hash)))return json({ok:false,message:'E-mail ou senha inválidos.'},401)
+    const token=await createPatientSession(env,Number(patient.id))
+    return json({ok:true,patient:{id:patient.id,full_name:patient.full_name,email:patient.email}},200,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
+  }
+
+  if(path==='/api/auth/logout' && request.method==='POST'){
+    const token=readCookie(request,PATIENT_COOKIE)
+    if(token)await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run()
+    return json({ok:true},200,{'set-cookie':clearCookie(PATIENT_COOKIE)})
+  }
+
+  if(path==='/api/me' && request.method==='GET'){
+    const patient=await patientFromRequest(request,env)
+    return patient?json({ok:true,patient}):json({ok:false,message:'Faça login para continuar.'},401)
+  }
 
   if(path==='/api/admin/login' && request.method==='POST'){
     const b=await data(request), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
