@@ -40,7 +40,6 @@ export default {
     }
 
     if (path === '/api/admin/settings') {
-      await ensureSchema(env)
       const response = await handlePricingV2(request, env, path)
       if (response) return response
     }
