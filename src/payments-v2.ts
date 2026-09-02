@@ -10,6 +10,13 @@ async function patient(request:Request,env:Env){
 }
 
 async function setting(env:Env,key:string,fallback=''){const r=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(key).first<any>();return r?.value??fallback}
+async function methodPrice(env:Env,method:'pix'|'credit_card',fallback:number){
+  const key=method==='pix'?'pix_price_cents':'card_price_cents'
+  const raw=await setting(env,key,'')
+  if(raw!=='')return Math.max(0,Math.round(Number(raw)||0))
+  const legacy=Number(await setting(env,'consultation_price_cents',String(fallback)))
+  return Math.max(0,Math.round(legacy||fallback||0))
+}
 
 async function googleAccessToken(env:Env){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return null
@@ -33,7 +40,7 @@ async function confirm(env:Env,payment:any,rawStatus:string,actualMethod?:string
   const ap=await env.DB.prepare('SELECT * FROM appointments WHERE id=?').bind(payment.appointment_id).first<any>(); if(!ap)return
   await env.DB.batch([
     env.DB.prepare(`UPDATE payments SET status='approved',raw_status=?,method=COALESCE(?,method),updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(rawStatus,actualMethod||null,payment.id),
-    env.DB.prepare(`UPDATE appointments SET status='confirmed',paid_at=CURRENT_TIMESTAMP,payment_method=COALESCE(?,payment_method),updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(actualMethod||null,ap.id),
+    env.DB.prepare(`UPDATE appointments SET status='confirmed',amount_cents=?,paid_at=CURRENT_TIMESTAMP,payment_method=COALESCE(?,payment_method),updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(Number(payment.amount_cents),actualMethod||null,ap.id),
     env.DB.prepare(`UPDATE availability SET status='confirmed',public_visibility='visible',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(ap.availability_id)
   ])
   await createCalendarEvent(env,Number(ap.id))
@@ -72,9 +79,9 @@ export async function handlePaymentsV2(request:Request,env:Env,path:string,ctx:E
     if(!requested)return json({ok:false,message:'Forma de pagamento inválida.'},400)
     const ap=await env.DB.prepare(`SELECT * FROM appointments WHERE id=? AND patient_id=?`).bind(appointmentId,p.id).first<any>()
     if(!ap||ap.status!=='pending_payment')return json({ok:false,message:'Reserva não disponível para pagamento.'},409)
-    const discount=requested==='pix'?Number(await setting(env,'pix_discount_percent','0')):0
-    const amount=Math.max(0,Math.round(Number(ap.amount_cents)*(1-discount/100)))
+    const amount=await methodPrice(env,requested as 'pix'|'credit_card',Number(ap.amount_cents||0))
     const provider=requested==='pix'?'sumup':'infinitepay'
+    await env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(amount,requested,appointmentId).run()
     const ins=await env.DB.prepare(`INSERT INTO payments (appointment_id,provider,method,status,amount_cents) VALUES (?,?,?,'pending',?)`).bind(appointmentId,provider,requested,amount).run()
     const paymentId=Number(ins.meta.last_row_id); const origin=env.APP_ORIGIN||new URL(request.url).origin
 
@@ -85,7 +92,7 @@ export async function handlePaymentsV2(request:Request,env:Env,path:string,ctx:E
       if(!r.ok){await env.DB.prepare(`UPDATE payments SET status='failed',raw_status=? WHERE id=?`).bind(JSON.stringify(d).slice(0,1000),paymentId).run();return json({ok:false,message:'Não foi possível gerar o Pix na SumUp.'},502)}
       const external=String(d.id||''); const checkoutUrl=d.hosted_checkout_url||d.hosted_checkout?.url||d.checkout_url||d.url||null
       await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,raw_status=? WHERE id=?`).bind(external||null,checkoutUrl,String(d.status||'PENDING'),paymentId).run()
-      await env.DB.prepare(`UPDATE appointments SET payment_method='pix',payment_provider='sumup',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(external||null,appointmentId).run()
+      await env.DB.prepare(`UPDATE appointments SET payment_provider='sumup',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(external||null,appointmentId).run()
       return json({ok:true,payment_id:paymentId,provider:'sumup',checkout_url:checkoutUrl,amount_cents:amount})
     }
 
@@ -95,7 +102,7 @@ export async function handlePaymentsV2(request:Request,env:Env,path:string,ctx:E
     if(!r.ok){await env.DB.prepare(`UPDATE payments SET status='failed',raw_status=? WHERE id=?`).bind(JSON.stringify(d).slice(0,1000),paymentId).run();return json({ok:false,message:'Não foi possível abrir o checkout da InfinitePay.'},502)}
     const checkoutUrl=d.url||d.checkout_url||d.link||null; const external=String(d.slug||d.id||'')
     await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,raw_status='created' WHERE id=?`).bind(external||null,checkoutUrl,paymentId).run()
-    await env.DB.prepare(`UPDATE appointments SET payment_method='credit_card',payment_provider='infinitepay',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(external||null,appointmentId).run()
+    await env.DB.prepare(`UPDATE appointments SET payment_provider='infinitepay',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(external||null,appointmentId).run()
     return json({ok:true,payment_id:paymentId,provider:'infinitepay',checkout_url:checkoutUrl,amount_cents:amount})
   }
 
