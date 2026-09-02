@@ -3,6 +3,7 @@ import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
+const TARGET_DATE='2026-09-02'
 
 async function admin(request:Request,env:Env){
   const token=readCookie(request,'ps_admin_session')
@@ -20,6 +21,25 @@ async function tableExists(env:Env,name:string){
   return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
 }
 
+async function testAppointments(env:Env){
+  const rows=await env.DB.prepare(`
+    SELECT a.id,a.status,a.paid_at,a.availability_id,av.starts_at,p.id AS patient_id,p.full_name,p.email
+    FROM appointments a
+    JOIN availability av ON av.id=a.availability_id
+    JOIN patients p ON p.id=a.patient_id
+    WHERE p.email LIKE 'teste.%@example.invalid' OR p.full_name LIKE 'Paciente Teste%'
+    ORDER BY av.starts_at ASC
+  `).all<any>()
+  return (rows.results||[]).filter((row:any)=>dayKeySaoPaulo(row.starts_at)===TARGET_DATE)
+}
+
+function validExisting(rows:any[]){
+  if(rows.length!==3)return false
+  const pending=rows.filter(r=>r.status==='pending_payment'&&!r.paid_at).length
+  const confirmed=rows.filter(r=>r.status==='confirmed'&&Boolean(r.paid_at)).length
+  return pending===1&&confirmed===2
+}
+
 async function cleanupPreviousTests(env:Env){
   const rows=await env.DB.prepare(`
     SELECT a.id AS appointment_id,a.availability_id,p.id AS patient_id
@@ -33,6 +53,7 @@ async function cleanupPreviousTests(env:Env){
     await env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('held','confirmed')`).bind(row.availability_id).run()
   }
   await env.DB.prepare(`DELETE FROM patients WHERE email LIKE 'teste.%@example.invalid' OR full_name LIKE 'Paciente Teste%'`).run()
+  await env.DB.prepare(`DELETE FROM settings WHERE key IN ('test_seed_appointments_v1','test_seed_appointments_v2')`).run()
 }
 
 export async function handleTestAppointments(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -40,11 +61,13 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
   const a=await admin(request,env)
   if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
 
-  const marker=await env.DB.prepare(`SELECT value FROM settings WHERE key='test_seed_appointments_v2'`).first<any>()
-  if(marker?.value==='done')return json({ok:true,already_done:true,date:'2026-09-02'})
-
   if(!(await tableExists(env,'patients'))||!(await tableExists(env,'appointments'))){
     return json({ok:false,message:'As tabelas de pacientes/consultas ainda não estão prontas para o teste.'},409)
+  }
+
+  const existing=await testAppointments(env)
+  if(validExisting(existing)){
+    return json({ok:true,already_done:true,date:TARGET_DATE,created:existing})
   }
 
   await cleanupPreviousTests(env)
@@ -56,8 +79,10 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
     ORDER BY starts_at ASC
   `).all<any>()
 
-  const slots=(rows.results||[]).filter((r:any)=>dayKeySaoPaulo(r.starts_at)==='2026-09-02').slice(0,3)
-  if(slots.length<3)return json({ok:false,message:'02/09/2026 não possui 3 horários livres cadastrados para criar os testes.'},409)
+  const slots=(rows.results||[]).filter((r:any)=>dayKeySaoPaulo(r.starts_at)===TARGET_DATE).slice(0,3)
+  if(slots.length<3){
+    return json({ok:false,message:`${TARGET_DATE} não possui 3 horários livres cadastrados para criar os testes.`,free_slots:slots.length},409)
+  }
 
   const priceRow=await env.DB.prepare(`SELECT value FROM settings WHERE key='consultation_price_cents'`).first<any>()
   const amount=Number(priceRow?.value||0)
@@ -78,15 +103,14 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
     const appointmentStatus=confirmed?'confirmed':'pending_payment'
     const slotStatus=confirmed?'confirmed':'held'
     const paidAt=confirmed?nowIso():null
-    const reservedUntil=confirmed?null:new Date(Date.now()+24*60*60*1000).toISOString()
+    const reservedUntil=confirmed?null:new Date(Date.now()+7*24*60*60*1000).toISOString()
     const ar=await env.DB.prepare(`
       INSERT INTO appointments (patient_id,availability_id,status,amount_cents,paid_at,reserved_until)
       VALUES (?,?,?,?,?,?)
     `).bind(patientId,slots[i].id,appointmentStatus,amount,paidAt,reservedUntil).run()
     await env.DB.prepare(`UPDATE availability SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(slotStatus,slots[i].id).run()
-    created.push({appointment_id:Number(ar.meta.last_row_id),patient_id:patientId,availability_id:slots[i].id,status:appointmentStatus,starts_at:slots[i].starts_at})
+    created.push({appointment_id:Number(ar.meta.last_row_id),patient_id:patientId,availability_id:slots[i].id,status:appointmentStatus,starts_at:slots[i].starts_at,full_name:p.name})
   }
 
-  await env.DB.prepare(`INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('test_seed_appointments_v2','done',CURRENT_TIMESTAMP)`).run()
-  return json({ok:true,created,date:'2026-09-02'},201)
+  return json({ok:true,created,date:TARGET_DATE},201)
 }
