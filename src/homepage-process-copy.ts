@@ -2,9 +2,10 @@ let installed=false
 let scheduled:number|undefined
 
 function applyProcessCopy(){
-  const section=document.querySelector<HTMLElement>('.site-shell .process#como-funciona')
+  const section=document.querySelector<HTMLElement>('.site-shell .process#como-funciona, .site-shell .process#atendimento')
   if(!section)return
 
+  section.id='atendimento'
   section.classList.add('clinical-care-section')
 
   const titleBlock=section.querySelector<HTMLElement>('.section-title')
