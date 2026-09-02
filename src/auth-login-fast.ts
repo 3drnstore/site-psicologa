@@ -25,7 +25,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
     }catch(error){
       const detail=error instanceof Error?error.message:String(error)
       console.error('Fast patient login error:',detail)
-      return json({ok:false,message:`Falha no login do paciente: ${detail}`,detail},500)
+      return json({ok:false,message:'Não foi possível entrar agora. Tente novamente em alguns minutos.'},503)
     }
   }
 
@@ -42,7 +42,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
     }catch(error){
       const detail=error instanceof Error?error.message:String(error)
       console.error('Fast admin login error:',detail)
-      return json({ok:false,message:`Falha no login profissional: ${detail}`,detail},500)
+      return json({ok:false,message:'O acesso profissional está temporariamente indisponível. Tente novamente em alguns minutos.'},503)
     }
   }
 
@@ -52,7 +52,11 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       if(!token)return json({ok:false,message:'Faça login para continuar.'},401)
       const patient=await env.DB.prepare(`SELECT p.id,p.full_name,p.birth_date,p.cpf,p.phone,p.email,p.email_verified FROM sessions s JOIN patients p ON p.id=s.patient_id WHERE s.token_hash=? AND s.expires_at>?`).bind(await sha256(token),now()).first<any>()
       return patient?json({ok:true,patient}):json({ok:false,message:'Sessão expirada.'},401)
-    }catch(error){const detail=error instanceof Error?error.message:String(error);return json({ok:false,message:`Falha ao restaurar sessão do paciente: ${detail}`,detail},500)}
+    }catch(error){
+      const detail=error instanceof Error?error.message:String(error)
+      console.error('Patient session restore error:',detail)
+      return json({ok:false,message:'Não foi possível validar sua sessão agora.'},503)
+    }
   }
 
   if(path==='/api/admin/me'&&request.method==='GET'){
@@ -61,7 +65,11 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       if(!token)return json({ok:false,message:'Acesso profissional necessário.'},401)
       const admin=await env.DB.prepare(`SELECT a.id,a.email,a.display_name,a.role FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),now()).first<any>()
       return admin?json({ok:true,admin}):json({ok:false,message:'Sessão expirada.'},401)
-    }catch(error){const detail=error instanceof Error?error.message:String(error);return json({ok:false,message:`Falha ao restaurar sessão profissional: ${detail}`,detail},500)}
+    }catch(error){
+      const detail=error instanceof Error?error.message:String(error)
+      console.error('Admin session restore error:',detail)
+      return json({ok:false,message:'Não foi possível validar a sessão profissional agora.'},503)
+    }
   }
 
   return null
