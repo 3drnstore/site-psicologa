@@ -1,0 +1,3 @@
+.site-shell .hero .portrait-placeholder.portrait-photo-test{padding:0!important;overflow:hidden!important;display:block!important;background:#e9eee9!important}
+.site-shell .hero .portrait-placeholder.portrait-photo-test .professional-photo-test{display:block;width:100%;height:100%;min-height:100%;object-fit:cover;object-position:center 28%;border-radius:inherit}
+@media(max-width:900px){.site-shell .hero .portrait-placeholder.portrait-photo-test .professional-photo-test{object-position:center 24%}}
