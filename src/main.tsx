@@ -21,6 +21,7 @@ import { installD1FetchCache } from './d1-fetch-cache'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
 import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
+import { installHomepageCtaSafe } from './homepage-cta-safe'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -34,6 +35,7 @@ import './patient-selection-fix.css'
 import './professional-presentation.css'
 import './clinical-care-section.css'
 import './contact-section.css'
+import './homepage-cta-safe.css'
 
 const path = window.location.pathname
 
@@ -103,4 +105,5 @@ installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
 installContactSectionEnhancer()
+installHomepageCtaSafe()
 installPatientRouteSync()
