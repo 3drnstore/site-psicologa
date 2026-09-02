@@ -44,7 +44,10 @@ export async function handlePublicAvailabilityV3(request:Request,env:Env,path:st
     WHERE COALESCE(public_visibility,'visible')='visible' AND starts_at>=? AND starts_at<=?
     ORDER BY starts_at ASC
   `).bind(from,to).all<any>()
-  const settings=await env.DB.prepare(`SELECT key,value FROM settings WHERE key IN ('consultation_price_cents','pix_discount_percent')`).all<any>()
+  const settings=await env.DB.prepare(`SELECT key,value FROM settings WHERE key IN ('consultation_price_cents','card_price_cents','pix_price_cents')`).all<any>()
   const map=Object.fromEntries((settings.results||[]).map((r:any)=>[r.key,r.value]))
-  return json({ok:true,slots:result.results||[],consultation_price_cents:Number(map.consultation_price_cents||0),pix_discount_percent:Number(map.pix_discount_percent||0)})
+  const legacy=Number(map.consultation_price_cents||0)
+  const card=Number(map.card_price_cents||legacy)
+  const pix=Number(map.pix_price_cents||legacy)
+  return json({ok:true,slots:result.results||[],consultation_price_cents:card,card_price_cents:card,pix_price_cents:pix})
 }
