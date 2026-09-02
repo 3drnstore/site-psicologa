@@ -15,6 +15,7 @@ import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
 import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { handleContactApi } from './contact-api'
+import { checkRateLimit } from './rate-limit'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -51,6 +52,9 @@ function withSecurityHeaders(response: Response, path: string) {
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url)
   const path = url.pathname
+
+  const limited = checkRateLimit(request, path)
+  if (limited) return limited
 
   if (path === '/api/contact') {
     try {
