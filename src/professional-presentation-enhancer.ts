@@ -3,7 +3,8 @@ let installed=false
 function ensurePresentation(){
   const hero=document.querySelector<HTMLElement>('.site-shell .hero')
   const art=hero?.querySelector<HTMLElement>('.hero-art')
-  if(!hero||!art||art.querySelector('.professional-presentation'))return
+  if(!hero||!art)return false
+  if(art.querySelector('.professional-presentation'))return true
 
   const presentation=document.createElement('section')
   presentation.className='professional-presentation'
@@ -18,12 +19,17 @@ function ensurePresentation(){
 
   const oldIntro=document.querySelector<HTMLElement>('.site-shell .intro#sobre')
   if(oldIntro)oldIntro.style.display='none'
+  return true
 }
 
 export function installProfessionalPresentationEnhancer(){
   if(installed)return
   installed=true
-  const run=()=>ensurePresentation()
+  let attempts=0
+  const run=()=>{
+    attempts+=1
+    if(ensurePresentation()||attempts>=20)return
+    window.setTimeout(run,50)
+  }
   run()
-  new MutationObserver(run).observe(document.body,{childList:true,subtree:true})
 }
