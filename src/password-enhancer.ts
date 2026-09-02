@@ -1,3 +1,5 @@
+let installed=false
+
 function enhancePasswords(){
   document.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach(input=>{
     if(input.dataset.eyeReady==='1')return
@@ -15,4 +17,18 @@ function enhancePasswords(){
     const a=document.createElement('a');a.className='forgot-password-link';a.href=`/recuperar-senha?tipo=${isAdmin?'admin':'patient'}`;a.textContent='Esqueci minha senha';form.appendChild(a)
   })
 }
-export function installPasswordEnhancer(){enhancePasswords();new MutationObserver(enhancePasswords).observe(document.documentElement,{childList:true,subtree:true})}
+
+function scheduleBurst(){
+  ;[0,60,150,350,700].forEach(delay=>window.setTimeout(enhancePasswords,delay))
+}
+
+export function installPasswordEnhancer(){
+  if(installed)return
+  installed=true
+  scheduleBurst()
+  document.addEventListener('click',()=>{
+    window.setTimeout(enhancePasswords,0)
+    window.setTimeout(enhancePasswords,120)
+  },true)
+  window.addEventListener('pageshow',scheduleBurst)
+}
