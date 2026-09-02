@@ -45,6 +45,10 @@ async function patientFromRequest(request:Request,env:Env){
     .bind(await sha256(token),now()).first<any>()
 }
 
+async function patientCredentials(env:Env,id:number){
+  return env.DB.prepare('SELECT id,password_hash,password_salt FROM patients WHERE id=?').bind(id).first<any>()
+}
+
 async function sendResetEmail(env:Env,email:string,link:string){
   if(!env.RESEND_API_KEY || !env.EMAIL_FROM) return false
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM,to:[email],subject:'Recuperação de senha — PsicoGestão',html:`<p>Recebemos uma solicitação para redefinir sua senha.</p><p><a href="${link}">Clique aqui para criar uma nova senha</a>.</p><p>Este link expira em 30 minutos. Se você não fez a solicitação, ignore este e-mail.</p>`})})
@@ -52,35 +56,22 @@ async function sendResetEmail(env:Env,email:string,link:string){
 }
 
 export async function handleAuthV2(request:Request,env:Env,path:string):Promise<Response|null>{
-  const handled=['/api/auth/register','/api/auth/login','/api/auth/logout','/api/me','/api/admin/login','/api/admin/logout','/api/admin/me','/api/password/forgot','/api/password/reset']
+  const handled=['/api/auth/register','/api/auth/login','/api/auth/logout','/api/me','/api/me/profile','/api/me/email','/api/me/password','/api/admin/login','/api/admin/logout','/api/admin/me','/api/password/forgot','/api/password/reset']
   if(!handled.includes(path)) return null
   await ensureAuthSchema(env)
 
   if(path==='/api/auth/register' && request.method==='POST'){
     try{
       const b=await data(request)
-      const fullName=String(b.full_name||'').trim()
-      const birthDate=String(b.birth_date||'').trim()
-      const cpf=digits(String(b.cpf||''))
-      const phone=digits(String(b.phone||''))
-      const email=String(b.email||'').trim().toLowerCase()
-      const password=String(b.password||'')
-      if(!fullName||!birthDate||cpf.length!==11||phone.length<10||!email.includes('@')||password.length<8){
-        return json({ok:false,message:'Preencha corretamente todos os campos. A senha deve ter pelo menos 8 caracteres.'},400)
-      }
+      const fullName=String(b.full_name||'').trim(), birthDate=String(b.birth_date||'').trim(), cpf=digits(String(b.cpf||'')), phone=digits(String(b.phone||'')), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
+      if(!fullName||!birthDate||cpf.length!==11||phone.length<10||!email.includes('@')||password.length<8)return json({ok:false,message:'Preencha corretamente todos os campos. A senha deve ter pelo menos 8 caracteres.'},400)
       const existing=await env.DB.prepare('SELECT id,email,cpf FROM patients WHERE email=? OR cpf=?').bind(email,cpf).first<any>()
       if(existing)return json({ok:false,message:'Já existe um cadastro com este e-mail ou CPF.'},409)
       const pwd=await hashPassword(password)
-      const result=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,password_hash,password_salt) VALUES (?,?,?,?,?,?,?)`)
-        .bind(fullName,birthDate,cpf,phone,email,pwd.hash,pwd.salt).run()
-      const patientId=Number(result.meta.last_row_id)
-      const token=await createPatientSession(env,patientId)
+      const result=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,password_hash,password_salt) VALUES (?,?,?,?,?,?,?)`).bind(fullName,birthDate,cpf,phone,email,pwd.hash,pwd.salt).run()
+      const patientId=Number(result.meta.last_row_id), token=await createPatientSession(env,patientId)
       return json({ok:true,patient:{id:patientId,full_name:fullName,email}},201,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
-    }catch(error){
-      const detail=error instanceof Error?error.message:String(error)
-      console.error('Patient register error:',detail)
-      return json({ok:false,message:'Não foi possível criar o cadastro do paciente.',detail},500)
-    }
+    }catch(error){const detail=error instanceof Error?error.message:String(error);console.error('Patient register error:',detail);return json({ok:false,message:'Não foi possível criar o cadastro do paciente.',detail},500)}
   }
 
   if(path==='/api/auth/login' && request.method==='POST'){
@@ -92,14 +83,45 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
   }
 
   if(path==='/api/auth/logout' && request.method==='POST'){
-    const token=readCookie(request,PATIENT_COOKIE)
-    if(token)await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run()
+    const token=readCookie(request,PATIENT_COOKIE);if(token)await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run()
     return json({ok:true},200,{'set-cookie':clearCookie(PATIENT_COOKIE)})
   }
 
   if(path==='/api/me' && request.method==='GET'){
-    const patient=await patientFromRequest(request,env)
-    return patient?json({ok:true,patient}):json({ok:false,message:'Faça login para continuar.'},401)
+    const patient=await patientFromRequest(request,env);return patient?json({ok:true,patient}):json({ok:false,message:'Faça login para continuar.'},401)
+  }
+
+  if(path==='/api/me/profile' && request.method==='PATCH'){
+    const patient=await patientFromRequest(request,env);if(!patient)return json({ok:false,message:'Faça login para continuar.'},401)
+    const b=await data(request), fullName=String(b.full_name||'').trim(), birthDate=String(b.birth_date||'').trim(), phone=digits(String(b.phone||''))
+    if(!fullName||!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)||phone.length<10)return json({ok:false,message:'Confira nome, data de nascimento e telefone.'},400)
+    await env.DB.prepare('UPDATE patients SET full_name=?,birth_date=?,phone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(fullName,birthDate,phone,patient.id).run()
+    return json({ok:true,message:'Dados atualizados.'})
+  }
+
+  if(path==='/api/me/email' && request.method==='PATCH'){
+    const patient=await patientFromRequest(request,env);if(!patient)return json({ok:false,message:'Faça login para continuar.'},401)
+    const b=await data(request), email=String(b.email||'').trim().toLowerCase(), currentPassword=String(b.current_password||'')
+    if(!email.includes('@'))return json({ok:false,message:'Informe um e-mail válido.'},400)
+    const creds=await patientCredentials(env,patient.id)
+    if(!creds?.password_hash||!creds?.password_salt)return json({ok:false,message:'Defina uma senha antes de alterar o e-mail.'},409)
+    if(!(await verifyPassword(currentPassword,creds.password_salt,creds.password_hash)))return json({ok:false,message:'Senha atual incorreta.'},401)
+    const exists=await env.DB.prepare('SELECT id FROM patients WHERE email=? AND id<>?').bind(email,patient.id).first<any>()
+    if(exists)return json({ok:false,message:'Este e-mail já está em uso.'},409)
+    await env.DB.prepare('UPDATE patients SET email=?,email_verified=0,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(email,patient.id).run()
+    return json({ok:true,message:'E-mail atualizado.'})
+  }
+
+  if(path==='/api/me/password' && request.method==='PATCH'){
+    const patient=await patientFromRequest(request,env);if(!patient)return json({ok:false,message:'Faça login para continuar.'},401)
+    const b=await data(request), currentPassword=String(b.current_password||''), newPassword=String(b.new_password||'')
+    if(newPassword.length<10)return json({ok:false,message:'A nova senha deve ter pelo menos 10 caracteres.'},400)
+    const creds=await patientCredentials(env,patient.id)
+    if(!creds?.password_hash||!creds?.password_salt)return json({ok:false,message:'Use a recuperação de senha para definir sua primeira senha.'},409)
+    if(!(await verifyPassword(currentPassword,creds.password_salt,creds.password_hash)))return json({ok:false,message:'Senha atual incorreta.'},401)
+    const pwd=await hashPassword(newPassword)
+    await env.DB.prepare('UPDATE patients SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,patient.id).run()
+    return json({ok:true,message:'Senha alterada com sucesso.'})
   }
 
   if(path==='/api/admin/login' && request.method==='POST'){
@@ -112,7 +134,7 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
   }
 
   if(path==='/api/admin/me' && request.method==='GET'){
-    const token=readCookie(request,ADMIN_COOKIE); if(!token)return json({ok:false,message:'Acesso profissional necessário.'},401)
+    const token=readCookie(request,ADMIN_COOKIE);if(!token)return json({ok:false,message:'Acesso profissional necessário.'},401)
     const admin=await env.DB.prepare(`SELECT a.id,a.email,a.display_name,a.role FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),now()).first<any>()
     return admin?json({ok:true,admin}):json({ok:false,message:'Sessão expirada.'},401)
   }
@@ -144,11 +166,9 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
     if(!reset)return json({ok:false,message:'Link inválido ou expirado.'},400)
     const pwd=await hashPassword(password)
     if(reset.account_type==='admin'){
-      await env.DB.prepare('UPDATE admin_users SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,reset.account_id).run()
-      await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=?').bind(reset.account_id).run()
+      await env.DB.prepare('UPDATE admin_users SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,reset.account_id).run();await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=?').bind(reset.account_id).run()
     }else{
-      await env.DB.prepare('UPDATE patients SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,Number(reset.account_id)).run()
-      await env.DB.prepare('DELETE FROM sessions WHERE patient_id=?').bind(Number(reset.account_id)).run()
+      await env.DB.prepare('UPDATE patients SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,Number(reset.account_id)).run();await env.DB.prepare('DELETE FROM sessions WHERE patient_id=?').bind(Number(reset.account_id)).run()
     }
     await env.DB.prepare('UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?').bind(reset.id).run()
     return json({ok:true,message:'Senha alterada com sucesso.'})
