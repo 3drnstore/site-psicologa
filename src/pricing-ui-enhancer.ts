@@ -8,9 +8,9 @@ async function putJson(path:string,data:any){const r=await fetch(path,{method:'P
 function ensureStyle(){
   if(document.getElementById('pricing-v2-style'))return
   const style=document.createElement('style');style.id='pricing-v2-style';style.textContent=`
+  .booking-summary[data-pricing-v2]{background:#e7f0eb!important;border-color:#cfddd5!important}
   .booking-summary[data-pricing-v2] .patient-session-info{display:none!important}
-  .booking-summary[data-pricing-v2]::before{content:attr(data-pricing-text);white-space:normal;display:block;flex:1 1 520px;color:#53645e;font-size:14px;line-height:1.55;font-weight:500}
-  .booking-summary[data-pricing-v2]::first-line{color:#173f39;font-weight:700}
+  .booking-summary[data-pricing-v2]::before{content:attr(data-pricing-text);white-space:normal;display:block;flex:1 1 520px;color:#3f5750;font-size:14px;line-height:1.55;font-weight:500}
   .pricing-v2-admin{display:grid;gap:18px}.pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pricing-v2-admin label{display:grid;gap:7px;font-weight:700}.pricing-v2-admin input{width:100%;border:1px solid #d6dfda;border-radius:11px;padding:12px 13px;background:#fff;font:inherit}.pricing-v2-note{padding:12px 14px;border-radius:10px;background:#f4f7f5;color:#5f6e68;font-size:13px;line-height:1.5}.pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#edf6f0;color:#245a45}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}
   @media(max-width:700px){.pricing-v2-admin .pricing-grid{grid-template-columns:1fr}.booking-summary[data-pricing-v2]::before{flex-basis:100%;text-align:left}}
   `;document.head.appendChild(style)
@@ -43,7 +43,7 @@ async function enhancePatient(){
   const pix=Number(data.pix_price_cents??data.consultation_price_cents??0)
   const card=Number(data.card_price_cents??data.consultation_price_cents??0)
   summary.dataset.pricingV2='1'
-  summary.dataset.pricingText=`Sessão online • duração de 50 minutos • Pix: ${money(pix)} • Cartão: ${money(card)}. O pagamento será realizado na próxima etapa. O agendamento somente será confirmado e o horário garantido após a confirmação do pagamento.`
+  summary.dataset.pricingText=`Sessão online com duração de 50 minutos. O agendamento será confirmado após a confirmação do pagamento. O pagamento deverá ser realizado na próxima etapa. Valor da sessão — Pix: ${money(pix)} — Cartão: ${money(card)}.`
   const actions=summary.querySelector('.payment-actions')
   const buttons=actions?.querySelectorAll<HTMLButtonElement>('button')
   if(buttons&&buttons.length>=2){
