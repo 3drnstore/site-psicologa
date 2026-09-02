@@ -34,11 +34,27 @@ function AdminRouteGate() {
   return <App initialView={state === 'authenticated' ? 'admin' : 'admin-login'} />
 }
 
+function PatientRouteGate() {
+  const [state, setState] = useState<'checking' | 'authenticated' | 'anonymous'>('checking')
+
+  useEffect(() => {
+    fetch('/api/me', { credentials: 'include' })
+      .then(response => setState(response.ok ? 'authenticated' : 'anonymous'))
+      .catch(() => setState('anonymous'))
+  }, [])
+
+  if (state === 'checking') {
+    return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>Área do paciente</strong><small>Restaurando sua sessão</small></div></div><h1>Carregando...</h1><p>Aguarde enquanto abrimos sua área.</p></div></div>
+  }
+
+  return <App initialView={state === 'authenticated' ? 'paciente' : undefined} />
+}
+
 function RoutedApp() {
   if (path === '/admin/setup') return <AdminSetup />
   if (path === '/recuperar-senha') return <PasswordRecovery />
   if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
-  return <App />
+  return <PatientRouteGate />
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
