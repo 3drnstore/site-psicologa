@@ -19,6 +19,7 @@ import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
 import { installD1FetchCache } from './d1-fetch-cache'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
+import { installContactSectionEnhancer } from './contact-section-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -31,6 +32,7 @@ import './patient-consultations.css'
 import './patient-selection-fix.css'
 import './professional-presentation.css'
 import './clinical-care-section.css'
+import './contact-section.css'
 
 const path = window.location.pathname
 
@@ -93,3 +95,4 @@ installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
+installContactSectionEnhancer()
