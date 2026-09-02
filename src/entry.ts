@@ -17,6 +17,7 @@ import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { handleContactApi } from './contact-api'
 import { checkRateLimit } from './rate-limit'
 import { handleHealthApi } from './health-api'
+import { protectApiRequest } from './api-protection'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -58,6 +59,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
   const health = await handleHealthApi(request, env, path)
   if (health) return health
+
+  const blocked = protectApiRequest(request, path)
+  if (blocked) return blocked
 
   const limited = checkRateLimit(request, path)
   if (limited) return limited
