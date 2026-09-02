@@ -1,43 +1,29 @@
 import { hashPassword } from './auth'
+import { ensureSchema } from './schema'
 import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
-
-async function ensureAdminSchema(env: Env) {
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS admin_users (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      password_salt TEXT NOT NULL,
-      display_name TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'psychologist' CHECK (role IN ('psychologist','assistant')),
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run()
-}
 
 export async function handleAdminSetup(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url)
 
   if (url.pathname === '/api/admin/setup-status' && request.method === 'GET') {
     try {
-      await ensureAdminSchema(env)
+      await ensureSchema(env)
       const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
       return json({ ok: true, configured: Number(row?.count || 0) > 0 })
     } catch (error) {
-      return json({ ok: false, message: error instanceof Error ? error.message : 'Falha ao verificar o administrador.' }, 500)
+      console.error('Admin setup status error:', error instanceof Error ? error.message : String(error))
+      return json({ ok: false, message: 'Não foi possível verificar a configuração administrativa agora.' }, 503)
     }
   }
 
   if (url.pathname === '/api/admin/setup' && request.method === 'POST') {
     try {
-      await ensureAdminSchema(env)
+      await ensureSchema(env)
       const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
       if (Number(count?.count || 0) > 0) return json({ ok: false, message: 'O administrador inicial já foi configurado.' }, 409)
-      if (!env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'A chave ADMIN_SETUP_TOKEN ainda não foi configurada na Cloudflare.' }, 503)
+      if (!env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'A configuração administrativa ainda não foi habilitada no servidor.' }, 503)
       const supplied = request.headers.get('x-setup-token') || ''
       if (supplied !== env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'Chave de configuração inválida.' }, 403)
 
@@ -54,7 +40,8 @@ export async function handleAdminSetup(request: Request, env: Env): Promise<Resp
 
       return json({ ok: true, admin_id: id }, 201)
     } catch (error) {
-      return json({ ok: false, message: error instanceof Error ? error.message : 'Falha ao criar administrador.' }, 500)
+      console.error('Admin setup error:', error instanceof Error ? error.message : String(error))
+      return json({ ok: false, message: 'Não foi possível concluir a configuração administrativa agora.' }, 503)
     }
   }
 
