@@ -14,6 +14,7 @@ let weekCursor:Date|null=null
 function isoDateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
 function mobileDateLabel(value:string){return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date(value))}
 function isMobile(){return window.matchMedia('(max-width: 900px)').matches}
+function currentWeekStart(){return mondayOf(new Date())}
 
 function weekMonthLabel(start:Date,end:Date){
   const sameYear=start.getFullYear()===end.getFullYear()
@@ -139,6 +140,8 @@ async function enhance(){
 
     const applyWeek=()=>{
       if(!weekCursor)return
+      const minimum=!isMobile()?currentWeekStart():null
+      if(minimum&&mondayOf(weekCursor)<minimum)weekCursor=minimum
       const start=mondayOf(weekCursor),end=addDays(start,5)
       sections.forEach(section=>{
         const raw=section.dataset.patientDate
@@ -151,16 +154,35 @@ async function enhance(){
       const toolbar=document.querySelector<HTMLElement>('.patient-calendar-toolbar')
       const period=toolbar?.querySelector<HTMLElement>('.patient-calendar-period')
       if(period)period.innerHTML=`<strong>${weekMonthLabel(start,end)}</strong><span>${dayNumber(start.toISOString())} a ${dayNumber(end.toISOString())}</span>`
+      const prev=toolbar?.querySelector<HTMLButtonElement>('[data-week="prev"]')
+      if(prev&&!isMobile()){
+        const atCurrent=start.getTime()<=currentWeekStart().getTime()
+        prev.disabled=atCurrent
+        prev.setAttribute('aria-disabled',String(atCurrent))
+        prev.style.opacity=atCurrent?'0.35':'1'
+        prev.style.cursor=atCurrent?'default':'pointer'
+      }
       localStorage.setItem('patientCalendarWeek',isoDateOnly(start))
     }
 
     let toolbar=document.querySelector<HTMLElement>('.patient-calendar-toolbar')
     if(!toolbar){
       const saved=localStorage.getItem('patientCalendarWeek')
-      if(saved){const parsed=new Date(`${saved}T12:00:00`);if(!Number.isNaN(parsed.getTime()))weekCursor=mondayOf(parsed)}
+      if(saved){
+        const parsed=new Date(`${saved}T12:00:00`)
+        if(!Number.isNaN(parsed.getTime())){
+          weekCursor=mondayOf(parsed)
+          if(!isMobile()&&weekCursor<currentWeekStart())weekCursor=currentWeekStart()
+        }
+      }
       toolbar=document.createElement('div');toolbar.className='patient-calendar-toolbar';toolbar.innerHTML=`<button type="button" class="patient-calendar-nav" data-week="prev" aria-label="Semana anterior">‹</button><div class="patient-calendar-period"></div><button type="button" class="patient-calendar-nav" data-week="next" aria-label="Próxima semana">›</button>`
       list.before(toolbar)
-      toolbar.querySelector('[data-week="prev"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),-7);applyWeek()})
+      toolbar.querySelector('[data-week="prev"]')?.addEventListener('click',()=>{
+        const next=addDays(weekCursor||new Date(),-7)
+        if(!isMobile()&&mondayOf(next)<currentWeekStart())return
+        weekCursor=next
+        applyWeek()
+      })
       toolbar.querySelector('[data-week="next"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),7);applyWeek()})
     }
     applyWeek()
