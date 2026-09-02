@@ -3,7 +3,6 @@ export type ApiError = { message?: string }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include',
-    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
     ...init,
   })
@@ -42,7 +41,7 @@ async function loginPatient(email: string, password: string) {
 
 async function currentPatient() {
   try {
-    const result = await request<any>('/api/me')
+    const result = await request<any>('/api/me', { cache: 'no-store' })
     if (result?.patient) writeSessionCache(PATIENT_CACHE_KEY, result.patient)
     return result
   } catch (error) {
@@ -65,7 +64,7 @@ async function loginAdmin(email: string, password: string) {
 
 async function currentAdmin() {
   try {
-    const result = await request<any>('/api/admin/me')
+    const result = await request<any>('/api/admin/me', { cache: 'no-store' })
     if (result?.admin) writeSessionCache(ADMIN_CACHE_KEY, result.admin)
     return result
   } catch (error) {
