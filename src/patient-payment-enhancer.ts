@@ -27,89 +27,44 @@ function ensureStyle(){
   document.head.appendChild(style)
 }
 
-function closeModal(){
-  document.querySelector('.patient-payment-backdrop')?.remove()
-  if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}
-}
+function closeModal(){document.querySelector('.patient-payment-backdrop')?.remove();if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}}
+function setStatus(text:string,type:'normal'|'success'|'error'='normal'){const el=document.querySelector<HTMLElement>('.patient-payment-status');if(!el)return;el.className=`patient-payment-status${type==='normal'?'':` ${type}`}`;el.textContent=text}
+async function latestPendingAppointment(){const data=await getJson('/api/appointments/mine');const list=(data.appointments||[]).filter((a:any)=>a.status==='pending_payment'&&(!a.reserved_until||new Date(a.reserved_until).getTime()>Date.now()));list.sort((a:any,b:any)=>Number(b.id)-Number(a.id));return list[0]||null}
 
-function setStatus(text:string,type:'normal'|'success'|'error'='normal'){
-  const el=document.querySelector<HTMLElement>('.patient-payment-status')
-  if(!el)return
-  el.className=`patient-payment-status${type==='normal'?'':` ${type}`}`
-  el.textContent=text
-}
-
-async function latestPendingAppointment(){
-  const data=await getJson('/api/appointments/mine')
-  const list=(data.appointments||[]).filter((a:any)=>a.status==='pending_payment'&&(!a.reserved_until||new Date(a.reserved_until).getTime()>Date.now()))
-  list.sort((a:any,b:any)=>Number(b.id)-Number(a.id))
-  return list[0]||null
+async function syncAppointment(appointmentId:number){
+  try{return await getJson(`/api/payments/status/${appointmentId}`)}catch{return null}
 }
 
 function openPixModal(data:any,appointmentId:number){
   closeModal()
-  const bg=document.createElement('div')
-  bg.className='patient-payment-backdrop'
+  const bg=document.createElement('div');bg.className='patient-payment-backdrop'
   bg.innerHTML=`<section class="patient-payment-modal" role="dialog" aria-modal="true" aria-label="Pagamento por Pix">
     <div class="patient-payment-head"><div><span>Pagamento</span><h2>Pix</h2></div><button type="button" class="patient-payment-close" aria-label="Fechar">×</button></div>
     <div class="patient-payment-amount"><span>Valor da sessão</span><strong>${money(Number(data.amount_cents||0))}</strong></div>
     ${data.pix_qr_code?`<div class="patient-payment-qr"><img src="${data.pix_qr_code}" alt="QR Code Pix"></div>`:''}
     ${data.pix_copy_paste?`<div class="patient-payment-code"><label>Pix copia e cola</label><textarea readonly>${String(data.pix_copy_paste).replace(/</g,'&lt;')}</textarea><button type="button" class="patient-payment-copy">Copiar código Pix</button></div>`:''}
-    <p class="patient-payment-note">Após realizar o pagamento, aguarde nesta tela. A confirmação é feita automaticamente pelo sistema e o horário somente fica confirmado após a validação do pagamento.</p>
+    <p class="patient-payment-note">O Pix é processado pelo Mercado Pago. Após realizar o pagamento, aguarde nesta tela. O horário somente fica confirmado após a validação automática do pagamento.</p>
     <div class="patient-payment-status">Aguardando confirmação do pagamento…</div>
   </section>`
   document.body.appendChild(bg)
   bg.querySelector<HTMLButtonElement>('.patient-payment-close')?.addEventListener('click',closeModal)
   bg.addEventListener('click',e=>{if(e.target===bg)closeModal()})
   const copy=bg.querySelector<HTMLButtonElement>('.patient-payment-copy')
-  copy?.addEventListener('click',async()=>{
-    const code=String(data.pix_copy_paste||'')
-    try{await navigator.clipboard.writeText(code);copy.textContent='Código copiado'}catch{const ta=bg.querySelector<HTMLTextAreaElement>('textarea');ta?.select();document.execCommand('copy');copy.textContent='Código copiado'}
-  })
-  pollTimer=window.setInterval(async()=>{
-    try{
-      const mine=await getJson('/api/appointments/mine')
-      const ap=(mine.appointments||[]).find((a:any)=>Number(a.id)===Number(appointmentId))
-      if(!ap)return
-      if(ap.status==='confirmed'){
-        if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}
-        setStatus('Pagamento confirmado. Seu horário está confirmado e garantido.','success')
-        window.setTimeout(()=>window.location.reload(),1600)
-      }else if(ap.status==='expired'||ap.status==='cancelled'){
-        if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}
-        setStatus('Esta reserva não está mais ativa. Volte à agenda e escolha um novo horário.','error')
-      }
-    }catch{}
-  },4000)
+  copy?.addEventListener('click',async()=>{const code=String(data.pix_copy_paste||'');try{await navigator.clipboard.writeText(code);copy.textContent='Código copiado'}catch{const ta=bg.querySelector<HTMLTextAreaElement>('textarea');ta?.select();document.execCommand('copy');copy.textContent='Código copiado'}})
+  const check=async()=>{const sync=await syncAppointment(appointmentId);const status=sync?.appointment?.status;if(status==='confirmed'){if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}setStatus('Pagamento confirmado. Seu horário está confirmado e garantido.','success');window.setTimeout(()=>window.location.reload(),1600)}else if(status==='expired'||status==='cancelled'){if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}setStatus('Esta reserva não está mais ativa. Volte à agenda e escolha um novo horário.','error')}}
+  void check();pollTimer=window.setInterval(check,4000)
 }
 
 async function startPix(button:HTMLButtonElement){
   if(button.disabled)return
-  const old=button.textContent||'Pix'
-  button.disabled=true
-  button.textContent='Gerando Pix…'
+  const old=button.textContent||'Pix';button.disabled=true;button.textContent='Gerando Pix…'
   try{
-    const ap=await latestPendingAppointment()
-    if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.')
+    const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.')
     const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'pix'})})
+    if(data.status==='approved'){window.location.reload();return}
     openPixModal(data,Number(ap.id))
-  }catch(err){
-    const msg=err instanceof Error?err.message:String(err)
-    let box=document.querySelector<HTMLElement>('.patient-page .info-box')
-    if(!box){box=document.createElement('div');box.className='info-box';document.querySelector('.patient-page .patient-content')?.prepend(box)}
-    box.textContent=msg
-  }finally{button.disabled=false;button.textContent=old}
+  }catch(err){const msg=err instanceof Error?err.message:String(err);let box=document.querySelector<HTMLElement>('.patient-page .info-box');if(!box){box=document.createElement('div');box.className='info-box';document.querySelector('.patient-page .patient-content')?.prepend(box)}box.textContent=msg}
+  finally{button.disabled=false;button.textContent=old}
 }
 
-export function installPatientPaymentEnhancer(){
-  if(installed)return;installed=true;ensureStyle()
-  document.addEventListener('click',e=>{
-    const target=e.target as HTMLElement|null
-    const button=target?.closest<HTMLButtonElement>('.patient-page .payment-actions button')
-    if(!button)return
-    const text=(button.textContent||'').trim().toLowerCase()
-    if(!text.startsWith('pix'))return
-    e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.()
-    void startPix(button)
-  },true)
-}
+export function installPatientPaymentEnhancer(){if(installed)return;installed=true;ensureStyle();document.addEventListener('click',e=>{const target=e.target as HTMLElement|null;const button=target?.closest<HTMLButtonElement>('.patient-page .payment-actions button');if(!button)return;const text=(button.textContent||'').trim().toLowerCase();if(!text.startsWith('pix'))return;e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.();void startPix(button)},true)}
