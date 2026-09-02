@@ -16,6 +16,7 @@ import { handlePricingV2 } from './pricing-v2'
 import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { handleContactApi } from './contact-api'
 import { checkRateLimit } from './rate-limit'
+import { handleHealthApi } from './health-api'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -36,10 +37,12 @@ function withSecurityHeaders(response: Response, path: string) {
     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; upgrade-insecure-requests",
   )
 
-  const privateRoute = path === '/admin' || path.startsWith('/admin/') || path === '/paciente' || path.startsWith('/paciente/') || path === '/recuperar-senha'
+  const privateRoute = path === '/admin' || path.startsWith('/admin/') || path === '/paciente' || path.startsWith('/paciente/') || path === '/recuperar-senha' || path === '/status' || path === '/status/'
   if (privateRoute) {
     headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive')
     headers.set('Cache-Control', 'private, no-store')
+  } else if (path === '/api/health') {
+    headers.set('Cache-Control', 'no-store')
   } else if (path.startsWith('/assets/')) {
     headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   } else if (path === '/favicon.svg' || path === '/site.webmanifest') {
@@ -52,6 +55,9 @@ function withSecurityHeaders(response: Response, path: string) {
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url)
   const path = url.pathname
+
+  const health = await handleHealthApi(request, env, path)
+  if (health) return health
 
   const limited = checkRateLimit(request, path)
   if (limited) return limited
