@@ -5,9 +5,7 @@ function isGenericResidual(text:string){
   return text.trim()==='Não foi possível concluir a solicitação.'
 }
 
-function isMobile(){
-  return window.matchMedia('(max-width: 900px)').matches
-}
+function isMobile(){return window.matchMedia('(max-width: 900px)').matches}
 
 function ensureStyle(){
   if(document.getElementById('patient-mobile-booking-stage-style'))return
@@ -109,12 +107,23 @@ function enforcePaymentStage(){
   })
 }
 
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.patient-page,.booking-summary,.payment-actions,.info-box')||Boolean(node.querySelector('.patient-page,.booking-summary,.payment-actions,.info-box'))
+  }))
+}
+
 export function installPatientPaymentStabilizer(){
   if(installed)return
   installed=true
   ensureStyle()
 
-  const schedule=()=>window.requestAnimationFrame(enforcePaymentStage)
+  let frame=0
+  const schedule=()=>{
+    if(frame)return
+    frame=window.requestAnimationFrame(()=>{frame=0;enforcePaymentStage()})
+  }
   document.addEventListener('click',event=>{
     const target=event.target as HTMLElement|null
     const button=target?.closest<HTMLButtonElement>('.patient-page .booking-summary button')
@@ -125,7 +134,7 @@ export function installPatientPaymentStabilizer(){
     }
   },true)
 
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,characterData:true})
-  window.addEventListener('resize',schedule)
+  new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(document.body,{childList:true,subtree:true})
+  window.addEventListener('resize',schedule,{passive:true})
   schedule()
 }
