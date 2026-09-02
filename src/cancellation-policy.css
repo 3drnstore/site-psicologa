@@ -1,0 +1,21 @@
+.booking-cancellation-policy {
+  margin: 14px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(75, 98, 87, .18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .45);
+  color: #486057;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.booking-cancellation-policy strong {
+  color: #29483f;
+}
+
+@media (max-width: 700px) {
+  .booking-cancellation-policy {
+    font-size: 13px;
+    margin-top: 12px;
+  }
+}
