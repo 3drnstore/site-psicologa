@@ -9,7 +9,6 @@ import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
 import { handlePublicAvailabilityV3 } from './public-availability-v3'
-import { handleTestAppointments } from './test-appointments'
 import { ensureAgendaSchema } from './agenda-schema'
 import { cleanupLegacyAgenda } from './agenda-normalize'
 import type { Env } from './types'
@@ -35,7 +34,6 @@ export default {
     const isAgendaRoute =
       (path === '/api/admin/availability' && request.method === 'POST') ||
       path === '/api/admin/availability/bulk' ||
-      path === '/api/admin/test-appointments' ||
       path === '/api/availability' ||
       path === '/api/admin/availability-v2' ||
       path.startsWith('/api/admin/recurring-blocks') ||
@@ -47,11 +45,6 @@ export default {
 
         if (path.startsWith('/api/admin/')) {
           await cleanupLegacyAgenda(env)
-        }
-
-        if (path === '/api/admin/test-appointments' && request.method === 'POST') {
-          const response = await handleTestAppointments(request, env, path)
-          if (response) return response
         }
 
         if (path === '/api/admin/availability' && request.method === 'POST') {
