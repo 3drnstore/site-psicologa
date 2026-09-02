@@ -1,0 +1,5 @@
+.patient-page .patient-calendar-slot{position:relative!important;height:58px!important;min-height:58px!important;max-height:58px!important;overflow:hidden!important;transition:background-color .12s ease,border-color .12s ease,color .12s ease,box-shadow .12s ease,outline-color .12s ease!important}
+.patient-page .patient-calendar-slot.selected svg:not(:first-of-type){display:none!important}
+.patient-page .patient-calendar-slot.selected::after{content:'✓';position:absolute;left:10px;bottom:5px;font-size:15px;line-height:1;font-weight:800;color:#fff;pointer-events:none}
+@media(max-width:900px){.patient-page .patient-calendar-slot{height:66px!important;min-height:66px!important;max-height:66px!important}}
+@media(max-width:430px){.patient-page .patient-calendar-slot{height:62px!important;min-height:62px!important;max-height:62px!important}}
