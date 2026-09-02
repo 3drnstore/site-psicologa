@@ -8,6 +8,7 @@ export interface Env {
   GOOGLE_REFRESH_TOKEN?: string
   MERCADOPAGO_ACCESS_TOKEN?: string
   MERCADOPAGO_WEBHOOK_SECRET?: string
+  MERCADOPAGO_TEST_MODE?: string
   INFINITEPAY_HANDLE?: string
   PAYMENT_PROVIDER?: string
   PAYMENT_API_URL?: string
