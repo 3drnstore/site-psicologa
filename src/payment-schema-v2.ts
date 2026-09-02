@@ -53,6 +53,7 @@ export async function ensurePaymentSchemaV2(env: Env) {
   await addColumn(env, 'appointments', 'payment_external_id', 'TEXT')
   await addColumn(env, 'appointments', 'google_calendar_event_id', 'TEXT')
   await addColumn(env, 'appointments', 'paid_at', 'TEXT')
+  await addColumn(env, 'appointments', 'confirmation_email_sent_at', 'TEXT')
   await addColumn(env, 'appointments', 'updated_at', 'TEXT')
 
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_payments_appointment_id ON payments(appointment_id)`).run()
