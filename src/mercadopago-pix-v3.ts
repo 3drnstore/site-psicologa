@@ -65,7 +65,9 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
       external_reference:`consulta-${appointmentId}-pagamento-${paymentId}`,
       processing_mode:'automatic',
       transactions:{payments:[{amount,payment_method:{id:'pix',type:'bank_transfer'},expiration_time:`PT${Math.max(30,Math.min(43200,holdMinutes))}M`}]},
-      payer:{email:testMode?'test_user_br@testuser.com':p.email}
+      payer:testMode
+        ?{email:'test_user_br@testuser.com',first_name:'APRO'}
+        :{email:p.email,first_name:String(p.full_name||'Paciente').split(' ')[0]}
     }
 
     const response=await fetch('https://api.mercadopago.com/v1/orders',{
