@@ -14,12 +14,14 @@ import { installPaymentProviderCopyEnhancer } from './payment-provider-copy-enha
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installPatientMessageEnhancer } from './patient-message-enhancer'
+import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
 import './admin-calendar.css'
 import './patient-calendar.css'
 import './patient-portal.css'
+import './patient-selection-fix.css'
 
 const path = window.location.pathname
 
@@ -76,3 +78,4 @@ installPaymentProviderCopyEnhancer()
 installAdminAppointmentEnhancer()
 installPricingUiEnhancer()
 installPatientMessageEnhancer()
+installPatientSelectionEnhancer()
