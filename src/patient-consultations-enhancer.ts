@@ -21,11 +21,11 @@ function card(a:any,kind:'upcoming'|'history'){
   </article>`
 }
 
-async function rebuild(){
+async function rebuild(force=false){
   const page=document.querySelector<HTMLElement>('.patient-page')
   if(!page)return
   const section=page.querySelector<HTMLElement>('.my-appointments')
-  if(!section||section.dataset.consultationsEnhanced==='1')return
+  if(!section||(!force&&section.dataset.consultationsEnhanced==='1'))return
   section.dataset.consultationsEnhanced='1'
   section.classList.add('patient-consultations-enhanced')
   section.innerHTML='<div class="patient-consultations-loading">Carregando suas consultas...</div>'
@@ -48,13 +48,28 @@ async function rebuild(){
   }
 }
 
+function schedule(force=false){
+  if(scheduled)clearTimeout(scheduled)
+  scheduled=window.setTimeout(()=>{scheduled=undefined;void rebuild(force)},100)
+}
+
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.patient-page,.my-appointments')||Boolean(node.querySelector('.patient-page,.my-appointments'))
+  }))
+}
+
 export function installPatientConsultationsEnhancer(){
   if(installed)return
   installed=true
-  const schedule=()=>{
-    if(scheduled)clearTimeout(scheduled)
-    scheduled=window.setTimeout(()=>{scheduled=undefined;void rebuild()},100)
-  }
   schedule()
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
+  document.addEventListener('click',event=>{
+    const target=event.target as HTMLElement|null
+    const tab=target?.closest<HTMLElement>('[data-patient-tab="consultas"]')
+    if(tab)schedule(true)
+  },true)
+  window.addEventListener('pageshow',()=>schedule(true))
 }
