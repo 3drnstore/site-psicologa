@@ -17,6 +17,7 @@ import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
+import { installD1FetchCache } from './d1-fetch-cache'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -68,6 +69,8 @@ function RoutedApp() {
   if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
   return <PatientRouteGate />
 }
+
+installD1FetchCache()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><RoutedApp /></React.StrictMode>,
