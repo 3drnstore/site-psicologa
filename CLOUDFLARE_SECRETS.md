@@ -4,14 +4,16 @@ Não coloque credenciais reais no GitHub. Configure-as em **Worker > Settings > 
 
 ## Pagamentos
 
-### SumUp (Pix)
-- `SUMUP_API_KEY` — chave secreta da API SumUp
-- `SUMUP_MERCHANT_CODE` — código do estabelecimento/merchant SumUp
+### Mercado Pago (Pix)
+- `MERCADOPAGO_ACCESS_TOKEN` — Access Token da aplicação Mercado Pago. Use a credencial de teste enquanto estivermos homologando e depois substitua pela credencial de produção.
+- `MERCADOPAGO_WEBHOOK_SECRET` — opcional por enquanto; poderá ser usada para validação adicional da assinatura do Webhook.
 
 Webhook usado pelo sistema:
-- `https://site-psicologa.thiagodrn2.workers.dev/api/payments/webhook/sumup`
+- `https://site-psicologa.thiagodrn2.workers.dev/api/payments/webhook/mercadopago`
 
-O Worker recebe o aviso e consulta `GET /v0.1/checkouts/{checkout_id}` na SumUp. A consulta só é confirmada quando o checkout consultado estiver `PAID` e o valor conferir.
+O sistema usa Checkout Transparente via **API de Orders**. A cobrança é criada explicitamente como Pix, o QR Code e o código copia-e-cola são exibidos dentro do portal do paciente e o sistema consulta `GET /v1/orders/{id}` para validar o status e o valor antes de confirmar a consulta.
+
+Para o Webhook no painel Mercado Pago, configure o tópico **Order (Mercado Pago)**.
 
 ### InfinitePay (cartão)
 - `INFINITEPAY_HANDLE` — InfiniteTag sem o símbolo `$`
@@ -19,7 +21,7 @@ O Worker recebe o aviso e consulta `GET /v0.1/checkouts/{checkout_id}` na SumUp.
 Webhook usado pelo sistema:
 - `https://site-psicologa.thiagodrn2.workers.dev/api/payments/webhook/infinitepay`
 
-O Worker recebe o aviso e valida a venda com `POST https://api.checkout.infinitepay.io/payment_check`. A consulta só é confirmada quando `paid=true` e o valor conferir.
+O Worker recebe o aviso e valida a venda com `POST https://api.checkout.infinitepay.io/payment_check`. A consulta só é confirmada quando `paid=true`, o valor confere e o meio recebido não é Pix.
 
 ## Google
 - `GOOGLE_CLIENT_ID`
