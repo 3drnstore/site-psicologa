@@ -3,6 +3,7 @@ import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
+const defaultFrom=()=>new Date(Date.now()-7*86400000).toISOString()
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
@@ -31,7 +32,7 @@ export async function handlePublicAvailabilityV3(request:Request,env:Env,path:st
   if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
   await releaseExpired(env)
   const url=new URL(request.url)
-  const from=url.searchParams.get('from')||nowIso()
+  const from=url.searchParams.get('from')||defaultFrom()
   const to=url.searchParams.get('to')||new Date(Date.now()+60*86400000).toISOString()
   const result=await env.DB.prepare(`
     SELECT id,starts_at,ends_at,status,
