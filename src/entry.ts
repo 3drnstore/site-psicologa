@@ -35,6 +35,7 @@ export default {
     const isAgendaRoute =
       (path === '/api/admin/availability' && request.method === 'POST') ||
       path === '/api/admin/availability/bulk' ||
+      path === '/api/admin/test-appointments' ||
       path === '/api/availability' ||
       path === '/api/admin/availability-v2' ||
       path.startsWith('/api/admin/recurring-blocks') ||
@@ -46,6 +47,11 @@ export default {
 
         if (path.startsWith('/api/admin/')) {
           await cleanupLegacyAgenda(env)
+        }
+
+        if (path === '/api/admin/test-appointments' && request.method === 'POST') {
+          const response = await handleTestAppointments(request, env, path)
+          if (response) return response
         }
 
         if (path === '/api/admin/availability' && request.method === 'POST') {
@@ -78,11 +84,6 @@ export default {
     }
 
     if (path.startsWith('/api/')) await ensureSchema(env)
-
-    if (path === '/api/admin/test-appointments' && request.method === 'POST') {
-      const response = await handleTestAppointments(request, env, path)
-      if (response) return response
-    }
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
