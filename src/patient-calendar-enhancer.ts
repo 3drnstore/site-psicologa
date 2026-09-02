@@ -12,6 +12,7 @@ let scheduled:number|undefined
 let weekCursor:Date|null=null
 
 function isoDateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
+function mobileDateLabel(value:string){return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date(value))}
 
 function weekMonthLabel(start:Date,end:Date){
   const sameYear=start.getFullYear()===end.getFullYear()
@@ -19,6 +20,15 @@ function weekMonthLabel(start:Date,end:Date){
   if(sameMonth)return monthLong(start)
   if(sameYear)return `${monthShort(start)}-${monthShort(end)}`
   return `${monthShort(start)}/${String(start.getFullYear()).slice(-2)}-${monthShort(end)}/${String(end.getFullYear()).slice(-2)}`
+}
+
+function surfaceReserveAction(){
+  if(!window.matchMedia('(max-width: 900px)').matches)return
+  window.setTimeout(()=>{
+    const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
+    if(!summary)return
+    summary.scrollIntoView({behavior:'smooth',block:'center'})
+  },90)
 }
 
 async function enhance(){
@@ -47,6 +57,8 @@ async function enhance(){
       const first=daySlots[0]
       if(first){
         section.dataset.patientDate=first.starts_at
+        section.dataset.mobileDateLabel=mobileDateLabel(first.starts_at)
+        h2.dataset.mobileDateLabel=mobileDateLabel(first.starts_at)
         h2.innerHTML=`<strong>${dayNumber(first.starts_at)}</strong><span>${weekday(first.starts_at)}</span>`
       }
       section.classList.add('patient-calendar-day')
@@ -74,6 +86,10 @@ async function enhance(){
         }else{
           label.textContent='Disponível'
           button.classList.remove('blocked')
+          if(!button.dataset.reserveSurfaceBound){
+            button.dataset.reserveSurfaceBound='1'
+            button.addEventListener('click',surfaceReserveAction)
+          }
         }
       })
     })
