@@ -9,6 +9,13 @@ on:
       - "src-tauri/**"
       - "package.json"
       - ".github/workflows/desktop-windows.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src-tauri/**"
+      - "package.json"
+      - ".github/workflows/desktop-windows.yml"
 
 jobs:
   build-windows:
