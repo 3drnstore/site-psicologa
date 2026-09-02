@@ -4,6 +4,8 @@ import type { Env } from './types'
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
 const defaultFrom=()=>new Date(Date.now()-7*86400000).toISOString()
+let lastExpiredCleanupAt=0
+let cleanupRunning:Promise<void>|null=null
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
@@ -11,19 +13,24 @@ async function patient(request:Request,env:Env){
   return env.DB.prepare(`SELECT p.id FROM sessions s JOIN patients p ON p.id=s.patient_id WHERE s.token_hash=? AND s.expires_at>?`).bind(await sha256(token),nowIso()).first<any>()
 }
 
-async function tableExists(env:Env,name:string){
-  return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
-}
-
 async function releaseExpired(env:Env){
-  if(!(await tableExists(env,'appointments')))return
-  const rows=await env.DB.prepare(`SELECT id,availability_id FROM appointments WHERE status='pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?`).bind(nowIso()).all<any>()
-  for(const row of rows.results||[]){
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE appointments SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(row.id),
-      env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='held'`).bind(row.availability_id),
-    ])
-  }
+  const now=Date.now()
+  if(now-lastExpiredCleanupAt<60_000)return
+  if(cleanupRunning)return cleanupRunning
+  cleanupRunning=(async()=>{
+    try{
+      const cutoff=nowIso()
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE status='held' AND id IN (SELECT availability_id FROM appointments WHERE status='pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?)` ).bind(cutoff),
+        env.DB.prepare(`UPDATE appointments SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE status='pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?`).bind(cutoff),
+      ])
+      lastExpiredCleanupAt=Date.now()
+    }catch(error){
+      console.warn('Expired reservation cleanup skipped:',error instanceof Error?error.message:String(error))
+      lastExpiredCleanupAt=Date.now()
+    }finally{cleanupRunning=null}
+  })()
+  return cleanupRunning
 }
 
 export async function handlePublicAvailabilityV3(request:Request,env:Env,path:string):Promise<Response|null>{
