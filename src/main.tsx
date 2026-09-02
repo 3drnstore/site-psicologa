@@ -21,6 +21,7 @@ import { installD1FetchCache } from './d1-fetch-cache'
 import { installHomepageProcessCopy } from './homepage-process-copy'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
 import { installTccSectionEnhancer } from './tcc-section-enhancer'
+import { installHomepageContentFixes } from './homepage-content-fixes'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -97,3 +98,4 @@ installPatientConsultationsEnhancer()
 installHomepageProcessCopy()
 installProfessionalPresentationEnhancer()
 installTccSectionEnhancer()
+installHomepageContentFixes()
