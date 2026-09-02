@@ -6,12 +6,13 @@ import PasswordRecovery from './PasswordRecovery'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
-import { installPatientBlockedEnhancer } from './patient-blocked-enhancer'
+import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
 import './admin-calendar.css'
+import './patient-calendar.css'
 
 const path = window.location.pathname
 
@@ -44,5 +45,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
-installPatientBlockedEnhancer()
+installPatientCalendarEnhancer()
 installAdminAppointmentEnhancer()
