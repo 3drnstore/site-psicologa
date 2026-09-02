@@ -9,6 +9,16 @@ const digits=(value:string)=>value.replace(/\D/g,'')
 
 async function data(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 
+async function ensurePatientSessionSchema(env:Env){
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    patient_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run()
+}
+
 async function ensureAuthSchema(env:Env){
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS patients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,12 +34,13 @@ async function ensureAuthSchema(env:Env){
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run()
+  await ensurePatientSessionSchema(env)
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS admin_sessions (id TEXT PRIMARY KEY, admin_user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, patient_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_reset_tokens (id TEXT PRIMARY KEY, account_type TEXT NOT NULL, account_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run()
 }
 
 async function createPatientSession(env:Env,patientId:number){
+  await ensurePatientSessionSchema(env)
   const token=randomToken(), tokenHash=await sha256(token)
   await env.DB.prepare('INSERT INTO sessions (id,patient_id,token_hash,expires_at) VALUES (?,?,?,?)')
     .bind(crypto.randomUUID(),patientId,tokenHash,new Date(Date.now()+SESSION_SECONDS*1000).toISOString()).run()
@@ -37,6 +48,7 @@ async function createPatientSession(env:Env,patientId:number){
 }
 
 async function patientFromRequest(request:Request,env:Env){
+  await ensurePatientSessionSchema(env)
   const token=readCookie(request,PATIENT_COOKIE)
   if(!token)return null
   return env.DB.prepare(`SELECT p.id,p.full_name,p.birth_date,p.cpf,p.phone,p.email,p.email_verified
@@ -58,6 +70,27 @@ async function sendResetEmail(env:Env,email:string,link:string){
 export async function handleAuthV2(request:Request,env:Env,path:string):Promise<Response|null>{
   const handled=['/api/auth/register','/api/auth/login','/api/auth/logout','/api/me','/api/me/profile','/api/me/email','/api/me/password','/api/admin/login','/api/admin/logout','/api/admin/me','/api/password/forgot','/api/password/reset']
   if(!handled.includes(path)) return null
+
+  if(path==='/api/auth/login' && request.method==='POST'){
+    try{
+      await ensurePatientSessionSchema(env)
+      const b=await data(request), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
+      const patient=await env.DB.prepare('SELECT id,full_name,email,password_hash,password_salt FROM patients WHERE email=?').bind(email).first<any>()
+      if(!patient?.password_hash||!patient?.password_salt||!(await verifyPassword(password,patient.password_salt,patient.password_hash)))return json({ok:false,message:'E-mail ou senha inválidos.'},401)
+      const token=await createPatientSession(env,Number(patient.id))
+      return json({ok:true,patient:{id:patient.id,full_name:patient.full_name,email:patient.email}},200,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
+    }catch(error){
+      const detail=error instanceof Error?error.message:String(error)
+      console.error('Patient login error:',detail)
+      return json({ok:false,message:`Não foi possível entrar. Detalhe: ${detail}`,detail},500)
+    }
+  }
+
+  if(path==='/api/me' && request.method==='GET'){
+    try{const patient=await patientFromRequest(request,env);return patient?json({ok:true,patient}):json({ok:false,message:'Faça login para continuar.'},401)}
+    catch(error){const detail=error instanceof Error?error.message:String(error);console.error('Patient me error:',detail);return json({ok:false,message:`Não foi possível restaurar sua sessão. Detalhe: ${detail}`,detail},500)}
+  }
+
   await ensureAuthSchema(env)
 
   if(path==='/api/auth/register' && request.method==='POST'){
@@ -74,21 +107,9 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
     }catch(error){const detail=error instanceof Error?error.message:String(error);console.error('Patient register error:',detail);return json({ok:false,message:'Não foi possível criar o cadastro do paciente.',detail},500)}
   }
 
-  if(path==='/api/auth/login' && request.method==='POST'){
-    const b=await data(request), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
-    const patient=await env.DB.prepare('SELECT id,full_name,email,password_hash,password_salt FROM patients WHERE email=?').bind(email).first<any>()
-    if(!patient?.password_hash||!patient?.password_salt||!(await verifyPassword(password,patient.password_salt,patient.password_hash)))return json({ok:false,message:'E-mail ou senha inválidos.'},401)
-    const token=await createPatientSession(env,Number(patient.id))
-    return json({ok:true,patient:{id:patient.id,full_name:patient.full_name,email:patient.email}},200,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
-  }
-
   if(path==='/api/auth/logout' && request.method==='POST'){
     const token=readCookie(request,PATIENT_COOKIE);if(token)await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run()
     return json({ok:true},200,{'set-cookie':clearCookie(PATIENT_COOKIE)})
-  }
-
-  if(path==='/api/me' && request.method==='GET'){
-    const patient=await patientFromRequest(request,env);return patient?json({ok:true,patient}):json({ok:false,message:'Faça login para continuar.'},401)
   }
 
   if(path==='/api/me/profile' && request.method==='PATCH'){
