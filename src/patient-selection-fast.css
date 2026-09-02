@@ -1,21 +1,33 @@
 @media(min-width:901px){
-  .patient-page .availability-day .time{
+  .patient-page .availability-day .time,
+  .patient-page .availability-day .patient-calendar-slot{
+    position:relative!important;
     height:66px!important;
     min-height:66px!important;
     max-height:66px!important;
+    padding:8px 34px 8px 10px!important;
     box-sizing:border-box!important;
     overflow:hidden!important;
     transform:none!important;
-    transition:background-color .08s ease,border-color .08s ease,color .08s ease,box-shadow .08s ease!important;
+    transition:background-color .06s linear,border-color .06s linear,color .06s linear,box-shadow .06s linear!important;
   }
   .patient-page .availability-day .time:hover,
-  .patient-page .availability-day .time.selected{
+  .patient-page .availability-day .time.selected,
+  .patient-page .availability-day .patient-calendar-slot:hover,
+  .patient-page .availability-day .patient-calendar-slot.selected{
     height:66px!important;
     min-height:66px!important;
     max-height:66px!important;
     transform:none!important;
   }
-  .patient-page .availability-day .time.selected svg:last-child:not(:first-child){
-    flex:0 0 auto;
+  .patient-page .availability-day .time.selected>svg:last-of-type:not(:first-child),
+  .patient-page .availability-day .patient-calendar-slot.selected>svg:last-of-type:not(:first-child){
+    position:absolute!important;
+    right:10px!important;
+    top:13px!important;
+    width:16px!important;
+    height:16px!important;
+    margin:0!important;
+    pointer-events:none!important;
   }
 }
