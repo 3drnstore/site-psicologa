@@ -90,7 +90,7 @@ export default {
       if (response) return response
     }
 
-    if (path === '/api/payments/checkout' || path.startsWith('/api/payments/webhook/sumup') || path.startsWith('/api/payments/webhook/infinitepay')) {
+    if (path.startsWith('/api/payments/')) {
       const response = await handlePaymentsV2(request, env, path, ctx)
       if (response) return response
     }
