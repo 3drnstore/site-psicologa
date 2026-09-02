@@ -93,6 +93,7 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
       ORDER BY a.id DESC LIMIT 1
     `).bind(p.id,slotId).first<any>()
     if(existing && (!existing.reserved_until || new Date(existing.reserved_until).getTime()>Date.now())){
+      await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
       return json({
         ok:true,
         appointment_id:Number(existing.id),
