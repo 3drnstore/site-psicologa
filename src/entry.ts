@@ -13,7 +13,6 @@ import { handlePublicAvailabilityV3 } from './public-availability-v3'
 import { handlePatientReserveV2 } from './patient-reserve-v2'
 import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
-import { ensurePaymentSchemaV2 } from './payment-schema-v2'
 import { handleContactApi } from './contact-api'
 import { checkRateLimit } from './rate-limit'
 import { handleHealthApi } from './health-api'
@@ -105,8 +104,6 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
   if (path.startsWith('/api/payments/')) {
     try {
-      await ensurePaymentSchemaV2(env)
-
       if (path === '/api/payments/checkout' && request.method === 'POST') {
         const probe = await request.clone().json().catch(() => ({})) as any
         if (probe.method === 'pix') {
