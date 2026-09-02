@@ -5,66 +5,6 @@ const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,
 const nowIso=()=>new Date().toISOString()
 const plusMinutes=(minutes:number)=>new Date(Date.now()+minutes*60000).toISOString()
 
-async function hasColumn(env:Env,table:string,column:string){
-  const result=await env.DB.prepare(`PRAGMA table_info(${table})`).all<any>()
-  return (result.results||[]).some((row:any)=>row.name===column)
-}
-
-async function addColumn(env:Env,table:string,column:string,definition:string){
-  if(!(await hasColumn(env,table,column))){
-    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run()
-  }
-}
-
-let reserveSchemaReady=false
-async function ensureReserveSchema(env:Env){
-  if(reserveSchemaReady)return
-
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`).run()
-
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS appointments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    patient_id INTEGER NOT NULL,
-    availability_id INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending_payment',
-    amount_cents INTEGER NOT NULL DEFAULT 0,
-    payment_method TEXT,
-    payment_provider TEXT,
-    payment_external_id TEXT,
-    google_calendar_event_id TEXT,
-    reserved_until TEXT,
-    paid_at TEXT,
-    cancellation_reason TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`).run()
-
-  await addColumn(env,'appointments','amount_cents','INTEGER NOT NULL DEFAULT 0')
-  await addColumn(env,'appointments','reserved_until','TEXT')
-  await addColumn(env,'appointments','payment_method','TEXT')
-  await addColumn(env,'appointments','payment_provider','TEXT')
-  await addColumn(env,'appointments','payment_external_id','TEXT')
-  await addColumn(env,'appointments','google_calendar_event_id','TEXT')
-  await addColumn(env,'appointments','paid_at','TEXT')
-  await addColumn(env,'appointments','cancellation_reason','TEXT')
-  await addColumn(env,'appointments','created_at','TEXT')
-  await addColumn(env,'appointments','updated_at','TEXT')
-
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_appointments_patient_availability_status ON appointments(patient_id,availability_id,status)`).run()
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_appointments_status_reserved_until ON appointments(status,reserved_until)`).run()
-
-  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('consultation_price_cents','0')`).run()
-  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('card_price_cents','0')`).run()
-  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('pix_price_cents','0')`).run()
-  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('hold_minutes','15')`).run()
-
-  reserveSchemaReady=true
-}
-
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
   if(!token)return null
@@ -80,8 +20,6 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
   if(path!=='/api/appointments/reserve'||request.method!=='POST')return null
 
   try{
-    await ensureReserveSchema(env)
-
     const p=await patient(request,env)
     if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
 
@@ -144,6 +82,6 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
   }catch(error){
     const detail=error instanceof Error?error.message:String(error)
     console.error('Patient reserve error:',detail)
-    return json({ok:false,message:`Não foi possível reservar este horário. Detalhe: ${detail}`},500)
+    return json({ok:false,message:'Não foi possível reservar este horário agora.'},500)
   }
 }
