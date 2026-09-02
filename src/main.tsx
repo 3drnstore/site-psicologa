@@ -9,6 +9,7 @@ import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
+import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -66,3 +67,4 @@ installAdminStateEnhancer()
 installPatientCalendarEnhancer()
 installPatientPortalEnhancer()
 installAdminAppointmentEnhancer()
+installPricingUiEnhancer()
