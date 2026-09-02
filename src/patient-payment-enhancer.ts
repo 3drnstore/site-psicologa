@@ -38,6 +38,13 @@ function showMessage(text:string){
 function closeModal(){document.querySelector('.patient-payment-backdrop')?.remove();if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}}
 function setStatus(text:string,type:'normal'|'success'|'error'='normal'){const el=document.querySelector<HTMLElement>('.patient-payment-status');if(!el)return;el.className=`patient-payment-status${type==='normal'?'':` ${type}`}`;el.textContent=text}
 async function latestPendingAppointment(){const data=await getJson('/api/appointments/mine');const list=(data.appointments||[]).filter((a:any)=>a.status==='pending_payment'&&(!a.reserved_until||new Date(a.reserved_until).getTime()>Date.now()));list.sort((a:any,b:any)=>Number(b.id)-Number(a.id));return list[0]||null}
+async function currentAppointmentId(){
+  const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
+  const stored=Number(summary?.dataset.appointmentId||0)
+  if(stored>0)return stored
+  const ap=await latestPendingAppointment()
+  return Number(ap?.id||0)
+}
 async function syncAppointment(appointmentId:number){try{return await getJson(`/api/payments/status/${appointmentId}`)}catch{return null}}
 
 async function resolveSelectedSlot(){
@@ -55,14 +62,15 @@ async function resolveSelectedSlot(){
   return slot
 }
 
-function renderPaymentChoices(){
+function renderPaymentChoices(appointmentId?:number){
   const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
   if(!summary)return
+  if(appointmentId)summary.dataset.appointmentId=String(appointmentId)
   summary.querySelectorAll('.payment-actions').forEach(el=>el.remove())
   summary.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{if((b.textContent||'').toLowerCase().includes('reservar horário'))b.remove()})
   const actions=document.createElement('div')
   actions.className='payment-actions'
-  actions.innerHTML='<button type="button" class="primary-button">Pix • Mercado Pago</button><button type="button" class="secondary-button">Cartão • InfinitePay</button>'
+  actions.innerHTML='<button type="button" class="primary-button" data-payment-method="pix">Pix • Mercado Pago</button><button type="button" class="secondary-button" data-payment-method="card">Cartão • InfinitePay</button>'
   summary.appendChild(actions)
 }
 
@@ -72,8 +80,9 @@ async function reserve(button:HTMLButtonElement){
   try{
     const slot=await resolveSelectedSlot()
     const r=await getJson('/api/appointments/reserve',{method:'POST',body:JSON.stringify({slot_id:slot.id})})
+    const appointmentId=Number(r.appointment_id||0)
     showMessage('Horário reservado temporariamente. Escolha a forma de pagamento para confirmar o agendamento.')
-    renderPaymentChoices()
+    renderPaymentChoices(appointmentId)
     document.querySelector<HTMLElement>('.patient-page .booking-summary')?.scrollIntoView({behavior:'smooth',block:'center'})
     return r
   }catch(err){showMessage(err instanceof Error?err.message:String(err));button.disabled=false;button.textContent=old}
@@ -102,16 +111,26 @@ function openPixModal(data:any,appointmentId:number){
 async function startPix(button:HTMLButtonElement){
   if(button.disabled)return
   const old=button.textContent||'Pix';button.disabled=true;button.textContent='Gerando Pix…'
-  try{const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.');const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'pix'})});if(data.status==='approved'){window.location.reload();return}openPixModal(data,Number(ap.id))}
-  catch(err){showMessage(err instanceof Error?err.message:String(err))}
+  try{
+    const appointmentId=await currentAppointmentId()
+    if(!appointmentId)throw new Error('Não encontrei a reserva criada. Selecione o horário novamente.')
+    const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:appointmentId,method:'pix'})})
+    if(data.status==='approved'){window.location.reload();return}
+    openPixModal(data,appointmentId)
+  }catch(err){showMessage(err instanceof Error?err.message:String(err))}
   finally{button.disabled=false;button.textContent=old}
 }
 
 async function startCard(button:HTMLButtonElement){
   if(button.disabled)return
   const old=button.textContent||'Cartão';button.disabled=true;button.textContent='Abrindo pagamento…'
-  try{const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.');const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'card'})});if(!data.checkout_url)throw new Error('A InfinitePay não retornou o link de pagamento.');window.location.href=data.checkout_url}
-  catch(err){showMessage(err instanceof Error?err.message:String(err));button.disabled=false;button.textContent=old}
+  try{
+    const appointmentId=await currentAppointmentId()
+    if(!appointmentId)throw new Error('Não encontrei a reserva criada. Selecione o horário novamente.')
+    const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:appointmentId,method:'card'})})
+    if(!data.checkout_url)throw new Error('A InfinitePay não retornou o link de pagamento.')
+    window.location.href=data.checkout_url
+  }catch(err){showMessage(err instanceof Error?err.message:String(err));button.disabled=false;button.textContent=old}
 }
 
 export function installPatientPaymentEnhancer(){
@@ -133,9 +152,10 @@ export function installPatientPaymentEnhancer(){
     }
     const button=target?.closest<HTMLButtonElement>('.patient-page .payment-actions button')
     if(!button)return
+    const method=button.dataset.paymentMethod
     const text=(button.textContent||'').trim().toLowerCase()
     e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.()
-    if(text.startsWith('pix'))void startPix(button)
-    else if(text.startsWith('cartão')||text.startsWith('cartao'))void startCard(button)
+    if(method==='pix'||text.startsWith('pix'))void startPix(button)
+    else if(method==='card'||text.startsWith('cartão')||text.startsWith('cartao'))void startCard(button)
   },true)
 }
