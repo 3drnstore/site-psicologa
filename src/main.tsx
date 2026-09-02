@@ -16,6 +16,7 @@ import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
+import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -24,6 +25,7 @@ import './patient-calendar.css'
 import './patient-calendar-boot.css'
 import './patient-portal.css'
 import './patient-booking-khaki.css'
+import './patient-consultations.css'
 import './patient-selection-fix.css'
 
 const path = window.location.pathname
@@ -83,3 +85,4 @@ installAdminAppointmentEnhancer()
 installPricingUiEnhancer()
 installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
+installPatientConsultationsEnhancer()
