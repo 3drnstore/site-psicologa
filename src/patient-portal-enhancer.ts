@@ -26,6 +26,11 @@ function currentTab():PatientTab{
   return saved&&['agenda','consultas','dados','seguranca'].includes(saved)?saved:'agenda'
 }
 
+function closeMobileMenu(page:HTMLElement){
+  page.classList.remove('patient-menu-open')
+  page.querySelector<HTMLButtonElement>('.patient-mobile-menu-button')?.setAttribute('aria-expanded','false')
+}
+
 function applyTab(page:HTMLElement,tab:PatientTab){
   localStorage.setItem('patientPortalTab',tab)
   page.dataset.patientTab=tab
@@ -42,6 +47,7 @@ function applyTab(page:HTMLElement,tab:PatientTab){
     title.textContent=labels[tab]
     title.style.display=tab==='agenda'?'none':''
   }
+  closeMobileMenu(page)
 }
 
 function formatCpf(value:string){const d=digits(value);return d.length===11?`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`:value}
@@ -83,6 +89,32 @@ async function buildAccountPanels(page:HTMLElement,patient:Patient){
   }
 }
 
+function ensureMobileMenu(page:HTMLElement){
+  const header=page.querySelector<HTMLElement>('.portal-header')
+  if(!header)return
+  if(!header.querySelector('.patient-mobile-menu-button')){
+    const button=document.createElement('button')
+    button.className='patient-mobile-menu-button'
+    button.type='button'
+    button.setAttribute('aria-label','Abrir menu do paciente')
+    button.setAttribute('aria-expanded','false')
+    button.innerHTML='<span></span><span></span><span></span>'
+    button.addEventListener('click',()=>{
+      const open=page.classList.toggle('patient-menu-open')
+      button.setAttribute('aria-expanded',String(open))
+    })
+    header.prepend(button)
+  }
+  if(!page.querySelector('.patient-menu-backdrop')){
+    const backdrop=document.createElement('button')
+    backdrop.className='patient-menu-backdrop'
+    backdrop.type='button'
+    backdrop.setAttribute('aria-label','Fechar menu')
+    backdrop.addEventListener('click',()=>closeMobileMenu(page))
+    page.appendChild(backdrop)
+  }
+}
+
 async function enhance(){
   if(running)return
   const page=document.querySelector<HTMLElement>('.patient-page')
@@ -99,6 +131,7 @@ async function enhance(){
       const header=page.querySelector('.portal-header');header?.after(sidebar)
       sidebar.querySelectorAll<HTMLButtonElement>('[data-patient-tab]').forEach(button=>button.addEventListener('click',()=>applyTab(page,button.dataset.patientTab as PatientTab)))
     }
+    ensureMobileMenu(page)
     if(!main.querySelector('[data-account-panel="dados"]')){
       const me=await jsonRequest('/api/me')
       await buildAccountPanels(page,me.patient)
