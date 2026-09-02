@@ -57,16 +57,21 @@ function PatientRouteGate() {
   const [state, setState] = useState<'checking' | 'authenticated' | 'anonymous'>('checking')
 
   useEffect(() => {
-    fetch('/api/me', { credentials: 'include' })
+    fetch('/api/me', { credentials: 'include', cache: 'no-store' })
       .then(response => setState(response.ok ? 'authenticated' : 'anonymous'))
       .catch(() => setState('anonymous'))
   }, [])
 
-  if (state === 'checking') {
-    return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>Área do paciente</strong><small>Restaurando sua sessão</small></div></div><h1>Carregando...</h1><p>Aguarde enquanto abrimos sua área.</p></div></div>
+  if (state === 'checking') return <div className="patient-session-check" aria-hidden="true" />
+
+  if (state === 'anonymous') {
+    if (window.location.pathname === '/paciente' || window.location.pathname === '/paciente/') {
+      window.history.replaceState({}, '', '/')
+    }
+    return <App />
   }
 
-  return <App initialView={state === 'authenticated' ? 'paciente' : undefined} />
+  return <App initialView="paciente" />
 }
 
 function RoutedApp() {
