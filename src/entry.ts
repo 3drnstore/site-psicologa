@@ -24,6 +24,7 @@ const apiError = (message: string) => new Response(JSON.stringify({ ok: false, m
 
 function withSecurityHeaders(response: Response, path: string) {
   const headers = new Headers(response.headers)
+  headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   headers.set('X-Content-Type-Options', 'nosniff')
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
@@ -38,6 +39,10 @@ function withSecurityHeaders(response: Response, path: string) {
   if (privateRoute) {
     headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive')
     headers.set('Cache-Control', 'private, no-store')
+  } else if (path.startsWith('/assets/')) {
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  } else if (path === '/favicon.svg' || path === '/site.webmanifest') {
+    headers.set('Cache-Control', 'public, max-age=86400')
   }
 
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
