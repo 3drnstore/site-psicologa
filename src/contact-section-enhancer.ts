@@ -11,8 +11,8 @@ function addContactSection() {
   section.innerHTML = `
     <div class="contact-heading">
       <span class="section-kicker">Contato</span>
-      <h2>Envie uma mensagem</h2>
-      <p>Se preferir, envie sua dúvida ou mensagem por aqui.</p>
+      <h2>Ficou com alguma dúvida antes de agendar?</h2>
+      <p>Envie uma mensagem. Este espaço pode ser usado para esclarecer dúvidas sobre o atendimento, funcionamento das sessões ou processo de agendamento.</p>
     </div>
     <form class="contact-form" id="patient-contact-form">
       <div class="contact-row">
