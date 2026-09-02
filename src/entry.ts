@@ -9,6 +9,7 @@ import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
 import { handlePublicAvailabilityV3 } from './public-availability-v3'
+import { handlePatientReserveV2 } from './patient-reserve-v2'
 import { handlePricingV2 } from './pricing-v2'
 import { ensureAgendaSchema } from './agenda-schema'
 import { cleanupLegacyAgenda } from './agenda-normalize'
@@ -84,6 +85,11 @@ export default {
     }
 
     if (path.startsWith('/api/')) await ensureSchema(env)
+
+    if (path === '/api/appointments/reserve' && request.method === 'POST') {
+      const response = await handlePatientReserveV2(request, env, path)
+      if (response) return response
+    }
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
