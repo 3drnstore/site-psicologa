@@ -6,8 +6,6 @@ const cache=new Map<string,CacheEntry>()
 const pending=new Map<string,PendingEntry>()
 
 const TTL:Record<string,number>={
-  '/api/me':60000,
-  '/api/admin/me':60000,
   '/api/availability':60000,
   '/api/appointments/mine':60000,
   '/api/admin/appointments':30000,
@@ -17,6 +15,7 @@ const TTL:Record<string,number>={
 }
 const ERROR_TTL=5000
 const PAYMENT_STATUS_TTL=12000
+const AUTH_STATE_PATHS=new Set(['/api/me','/api/admin/me'])
 
 function sameOriginUrl(input:RequestInfo|URL){
   try{
@@ -50,8 +49,15 @@ export function installD1FetchCache(){
 
     if(method!=='GET'){
       const response=await originalFetch(input as any,init)
-      if(response.ok&&path.startsWith('/api/'))clearPortalCache()
+      if(path.startsWith('/api/auth/')||path.startsWith('/api/admin/login')||path.startsWith('/api/admin/logout'))clearPortalCache()
+      else if(response.ok&&path.startsWith('/api/'))clearPortalCache()
       return response
+    }
+
+    // Authentication state must always come from the server. A cached 401 here
+    // can make a successful login appear to have failed until the TTL expires.
+    if(AUTH_STATE_PATHS.has(path)||init?.cache==='no-store'){
+      return originalFetch(input as any,{...init,cache:'no-store'})
     }
 
     const ttl=ttlFor(`${path}${url.search}`)||ttlFor(path)
