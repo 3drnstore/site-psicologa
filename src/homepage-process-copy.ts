@@ -12,17 +12,17 @@ function applyProcessCopy(){
     titleBlock.innerHTML=`
       <span class="section-kicker">Atendimento</span>
       <h2>Atendimento clínico individual</h2>
-      <p class="clinical-intro">O atendimento clínico individual é orientado pela psicanálise e acontece semanalmente em um horário fixo, com sessões online de 50 minutos.</p>
+      <p class="clinical-intro">O atendimento clínico individual é orientado pela Teoria Cognitivo-Comportamental (TCC) e acontece semanalmente em um horário fixo ou de acordo com a disponibilidade do paciente, com sessões online de 50 minutos.</p>
     `
   }
 
-  const steps=section.querySelector<HTMLElement>('.steps')
+  const steps=section.querySelector<HTMLElement>('.clinical-care-content, .steps')
   if(steps){
     steps.className='clinical-care-content'
     steps.innerHTML=`
       <div class="clinical-online-copy">
         <h3>Atendimento On-line</h3>
-        <p>Utilizamos plataformas de vídeo como <strong>Google Meet, Zoom ou WhatsApp</strong> para proporcionar um ambiente virtual seguro e confortável. Essas opções de atendimento são acessíveis tanto para pacientes em todo o território nacional quanto para aqueles localizados no exterior.</p>
+        <p>O atendimento ocorre através da plataforma <strong>Google Meet</strong>, ambiente virtual acessível, seguro e confortável para os pacientes.</p>
       </div>
     `
   }
