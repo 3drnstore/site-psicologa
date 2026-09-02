@@ -25,10 +25,6 @@ function applyAccessibility() {
     menu.setAttribute('aria-expanded', nav.classList.contains('open') ? 'true' : 'false')
   }
 
-  document.querySelectorAll<HTMLButtonElement>('button').forEach(button => {
-    if (!button.getAttribute('type')) button.setAttribute('type', 'button')
-  })
-
   document.querySelectorAll<HTMLElement>('[aria-hidden="true"]').forEach(el => {
     if (el.matches('button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])')) {
       el.setAttribute('tabindex', '-1')
