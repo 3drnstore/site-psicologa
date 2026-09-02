@@ -11,8 +11,14 @@ async function admin(request:Request,env:Env){
     .bind(await sha256(token),nowIso()).first<any>()
 }
 
+function dayKeySaoPaulo(value:string){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value))
+}
 function weekdaySaoPaulo(value:string){
   return new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).format(new Date(value))
+}
+async function tableExists(env:Env,name:string){
+  return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
 }
 
 export async function handleTestAppointments(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -23,11 +29,12 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
   const marker=await env.DB.prepare(`SELECT value FROM settings WHERE key='test_seed_appointments_v1'`).first<any>()
   if(marker?.value==='done')return json({ok:true,already_done:true})
 
-  const from=new Date()
-  from.setHours(0,0,0,0)
-  const to=new Date(from)
-  to.setDate(to.getDate()+14)
-  to.setHours(23,59,59,999)
+  if(!(await tableExists(env,'patients'))||!(await tableExists(env,'appointments'))){
+    return json({ok:false,message:'As tabelas de pacientes/consultas ainda não estão prontas para o teste.'},409)
+  }
+
+  const from=new Date();from.setHours(0,0,0,0)
+  const to=new Date(from);to.setDate(to.getDate()+120);to.setHours(23,59,59,999)
 
   const rows=await env.DB.prepare(`
     SELECT id,starts_at,ends_at,status
@@ -37,12 +44,16 @@ export async function handleTestAppointments(request:Request,env:Env,path:string
     ORDER BY starts_at ASC
   `).bind(from.toISOString(),to.toISOString()).all<any>()
 
-  const wednesday=(rows.results||[]).filter((r:any)=>weekdaySaoPaulo(r.starts_at)==='Wed')
-  if(wednesday.length<3)return json({ok:false,message:'Não encontrei 3 horários livres na próxima quarta-feira disponível.'},409)
-
-  const firstDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(wednesday[0].starts_at))
-  const slots=wednesday.filter((r:any)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(r.starts_at))===firstDay).slice(0,3)
-  if(slots.length<3)return json({ok:false,message:'A quarta-feira encontrada não possui 3 horários livres no mesmo dia.'},409)
+  const grouped=new Map<string,any[]>()
+  for(const row of rows.results||[]){
+    if(weekdaySaoPaulo(row.starts_at)!=='Wed')continue
+    const key=dayKeySaoPaulo(row.starts_at)
+    grouped.set(key,[...(grouped.get(key)||[]),row])
+  }
+  const candidate=[...grouped.entries()].find(([,items])=>items.length>=3)
+  if(!candidate)return json({ok:false,message:'Ainda não há uma quarta-feira com 3 horários livres para criar os testes.'},409)
+  const [firstDay,daySlots]=candidate
+  const slots=daySlots.slice(0,3)
 
   const priceRow=await env.DB.prepare(`SELECT value FROM settings WHERE key='consultation_price_cents'`).first<any>()
   const amount=Number(priceRow?.value||0)
