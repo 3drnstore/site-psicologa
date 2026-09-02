@@ -10,6 +10,14 @@ function ensureCareSections() {
     heroParagraph.textContent = 'Psicoterapia online em Terapia Cognitivo-Comportamental (TCC), com sessões individuais de 50 minutos, escuta cuidadosa, ética e respeito ao seu tempo.'
   }
 
+  const heroActions = shell.querySelector<HTMLElement>('.hero .hero-actions')
+  if (heroActions) {
+    const bookingButton = heroActions.querySelector<HTMLButtonElement>('.primary-button')
+    bookingButton?.remove()
+  }
+
+  shell.querySelector<HTMLElement>('.hero .trust-row')?.remove()
+
   const services = main.querySelector<HTMLElement>('.services#como-funciona')
   if (services && !document.getElementById('pode-ajudar')) {
     const section = document.createElement('section')
@@ -52,6 +60,33 @@ function ensureCareSections() {
       </div>
     `
     atendimento.insertAdjacentElement('afterend', section)
+  }
+
+  const faq = main.querySelector<HTMLElement>('.faq#duvidas')
+  let conversation = document.getElementById('vamos-conversar') as HTMLElement | null
+  if (faq && !conversation) {
+    conversation = document.createElement('section')
+    conversation.id = 'vamos-conversar'
+    conversation.className = 'conversation-cta'
+    conversation.innerHTML = `
+      <div class="conversation-cta-inner">
+        <span class="section-kicker">Consultório de Psicologia</span>
+        <h2>Vamos conversar</h2>
+        <p>O primeiro passo para iniciar a psicoterapia é conversar. Vamos encontrar um momento em que possamos nos encontrar e conversar sobre o que está em sua mente.</p>
+        <button type="button" class="primary-button large conversation-booking-button">Agendar consulta</button>
+      </div>
+    `
+    faq.insertAdjacentElement('afterend', conversation)
+    conversation.querySelector<HTMLButtonElement>('.conversation-booking-button')?.addEventListener('click', () => {
+      const headerButton = [...shell.querySelectorAll<HTMLButtonElement>('.site-header button')]
+        .find(button => (button.textContent || '').trim() === 'Agendar consulta')
+      headerButton?.click()
+    })
+  }
+
+  const contact = document.getElementById('contato')
+  if (conversation && contact && conversation.nextElementSibling !== contact) {
+    main.insertBefore(conversation, contact)
   }
 }
 
