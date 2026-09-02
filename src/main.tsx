@@ -22,6 +22,7 @@ import { installProfessionalPresentationEnhancer } from './professional-presenta
 import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCtaSafe } from './homepage-cta-safe'
+import { installProfessionalIdentitySafe } from './professional-identity-safe'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -104,6 +105,7 @@ installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
+installProfessionalIdentitySafe()
 installContactSectionEnhancer()
 installHomepageCtaSafe()
 installPatientRouteSync()
