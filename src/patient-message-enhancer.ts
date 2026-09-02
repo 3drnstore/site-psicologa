@@ -16,9 +16,19 @@ function cleanGenericPatientMessage(){
   })
 }
 
+function scheduleBurst(){
+  ;[0,80,200,500].forEach(delay=>window.setTimeout(cleanGenericPatientMessage,delay))
+}
+
 export function installPatientMessageEnhancer(){
   if(installed)return
   installed=true
-  cleanGenericPatientMessage()
-  new MutationObserver(cleanGenericPatientMessage).observe(document.body,{childList:true,subtree:true,characterData:true})
+  scheduleBurst()
+  document.addEventListener('click',event=>{
+    const target=event.target as HTMLElement|null
+    if(!target?.closest('.patient-page'))return
+    window.setTimeout(cleanGenericPatientMessage,0)
+    window.setTimeout(cleanGenericPatientMessage,180)
+  },true)
+  window.addEventListener('pageshow',scheduleBurst)
 }
