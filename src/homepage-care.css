@@ -86,9 +86,49 @@
   font-size: 22px;
 }
 
+.conversation-cta {
+  padding: 26px 4vw 88px;
+  background: #f7f4ec;
+}
+
+.conversation-cta-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 58px 64px;
+  border: 1px solid #d8d3c3;
+  border-radius: 30px;
+  background: #eee9d9;
+}
+
+.conversation-cta h2 {
+  margin: 14px 0 18px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(42px, 5vw, 66px);
+  font-weight: 400;
+  line-height: 1.02;
+  color: #173f38;
+}
+
+.conversation-cta p {
+  max-width: 760px;
+  margin: 0 0 30px;
+  font-size: 18px;
+  line-height: 1.75;
+  color: #52645f;
+}
+
+.conversation-cta .conversation-booking-button {
+  min-width: 210px;
+}
+
+.hero .hero-actions {
+  margin-bottom: 0;
+}
+
 @media (max-width: 900px) {
   .patient-needs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .online-prep-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .conversation-cta-inner { padding: 48px 42px; }
 }
 
 @media (max-width: 600px) {
@@ -97,4 +137,8 @@
   .patient-needs-grid,
   .online-prep-grid { grid-template-columns: 1fr; }
   .patient-needs-grid article { min-height: auto; }
+  .conversation-cta { padding: 18px 20px 68px; }
+  .conversation-cta-inner { padding: 38px 28px; border-radius: 24px; }
+  .conversation-cta p { font-size: 16px; }
+  .conversation-cta .conversation-booking-button { width: 100%; }
 }
