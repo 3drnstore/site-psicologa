@@ -64,13 +64,14 @@ export async function ensureSchema(env: Env) {
       patient_id INTEGER NOT NULL,
       availability_id INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending_payment' CHECK (status IN ('pending_payment','confirmed','cancelled','expired')),
-      amount_cents INTEGER NOT NULL,
-      payment_method TEXT CHECK (payment_method IN ('pix','credit_card')),
+      amount_cents INTEGER NOT NULL DEFAULT 0,
+      payment_method TEXT,
       payment_provider TEXT,
       payment_external_id TEXT,
       google_calendar_event_id TEXT,
       reserved_until TEXT,
       paid_at TEXT,
+      confirmation_email_sent_at TEXT,
       cancellation_reason TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -83,8 +84,8 @@ export async function ensureSchema(env: Env) {
       appointment_id INTEGER NOT NULL,
       provider TEXT NOT NULL,
       external_id TEXT,
-      method TEXT NOT NULL CHECK (method IN ('pix','credit_card')),
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','failed','refunded','cancelled')),
+      method TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
       amount_cents INTEGER NOT NULL,
       raw_reference TEXT,
       checkout_url TEXT,
@@ -145,6 +146,16 @@ export async function ensureSchema(env: Env) {
       FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      account_type TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS oauth_pending (
       id TEXT PRIMARY KEY,
       token_hash TEXT NOT NULL UNIQUE,
@@ -152,6 +163,16 @@ export async function ensureSchema(env: Env) {
       email TEXT NOT NULL,
       full_name TEXT,
       expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -170,21 +191,39 @@ export async function ensureSchema(env: Env) {
     CREATE INDEX IF NOT EXISTS idx_recurring_blocks_active ON recurring_blocks(active,weekday,start_time);
     CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id);
     CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
+    CREATE INDEX IF NOT EXISTS idx_appointments_patient_availability_status ON appointments(patient_id,availability_id,status);
+    CREATE INDEX IF NOT EXISTS idx_appointments_status_reserved_until ON appointments(status,reserved_until);
     CREATE INDEX IF NOT EXISTS idx_payments_appointment_id ON payments(appointment_id);
     CREATE INDEX IF NOT EXISTS idx_clinical_notes_patient_date ON clinical_notes(patient_id, session_date DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_hash ON admin_sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_password_reset_token_hash ON password_reset_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_oauth_pending_token_hash ON oauth_pending(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_contact_messages_status_created ON contact_messages(status,created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
   `)
 
   await addColumn(env, 'patients', 'password_salt', 'TEXT')
   await addColumn(env, 'patients', 'email_verified', 'INTEGER NOT NULL DEFAULT 0')
+  await addColumn(env, 'appointments', 'amount_cents', 'INTEGER NOT NULL DEFAULT 0')
+  await addColumn(env, 'appointments', 'reserved_until', 'TEXT')
+  await addColumn(env, 'appointments', 'payment_method', 'TEXT')
+  await addColumn(env, 'appointments', 'payment_provider', 'TEXT')
+  await addColumn(env, 'appointments', 'payment_external_id', 'TEXT')
+  await addColumn(env, 'appointments', 'google_calendar_event_id', 'TEXT')
+  await addColumn(env, 'appointments', 'paid_at', 'TEXT')
+  await addColumn(env, 'appointments', 'confirmation_email_sent_at', 'TEXT')
   await addColumn(env, 'appointments', 'cancellation_reason', 'TEXT')
+  await addColumn(env, 'appointments', 'created_at', 'TEXT')
+  await addColumn(env, 'appointments', 'updated_at', 'TEXT')
+  await addColumn(env, 'payments', 'external_id', 'TEXT')
+  await addColumn(env, 'payments', 'raw_reference', 'TEXT')
   await addColumn(env, 'payments', 'checkout_url', 'TEXT')
   await addColumn(env, 'payments', 'pix_qr_code', 'TEXT')
   await addColumn(env, 'payments', 'pix_copy_paste', 'TEXT')
   await addColumn(env, 'payments', 'raw_status', 'TEXT')
+  await addColumn(env, 'payments', 'created_at', 'TEXT')
+  await addColumn(env, 'payments', 'updated_at', 'TEXT')
   await addColumn(env, 'availability', 'public_visibility', "TEXT NOT NULL DEFAULT 'visible'")
   await addColumn(env, 'availability', 'source', "TEXT NOT NULL DEFAULT 'manual'")
   await addColumn(env, 'availability', 'recurring_block_id', 'TEXT')
@@ -195,6 +234,8 @@ export async function ensureSchema(env: Env) {
 
   await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('consultation_price_cents', '0')`),
+    env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('pix_price_cents', '0')`),
+    env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('card_price_cents', '0')`),
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('pix_discount_percent', '0')`),
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('timezone', 'America/Sao_Paulo')`),
     env.DB.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('appointment_duration_minutes', '50')`),
