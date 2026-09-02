@@ -10,6 +10,7 @@ import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
 import { handlePublicAvailabilityV3 } from './public-availability-v3'
 import { handlePatientReserveV2 } from './patient-reserve-v2'
+import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
 import { ensureAgendaSchema } from './agenda-schema'
 import { cleanupLegacyAgenda } from './agenda-normalize'
@@ -32,6 +33,11 @@ export default {
 
     const authV2 = await handleAuthV2(request, env, path)
     if (authV2) return authV2
+
+    if (path === '/api/admin/patients' || /^\/api\/admin\/patients\/\d+$/.test(path)) {
+      const response = await handleAdminPatientsV2(request, env, path)
+      if (response) return response
+    }
 
     if (path === '/api/admin/settings') {
       await ensureSchema(env)
