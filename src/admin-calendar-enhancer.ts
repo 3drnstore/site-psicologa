@@ -1,6 +1,6 @@
 type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string }
 type Cell = { starts_at:string; ends_at:string; day:Date; hour:number; slot?:Slot }
-type BulkMode='free'|'occupied'|'blocked'|'delete'
+type BulkMode='free'|'occupied'|'blocked'
 
 const fmtTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
@@ -76,7 +76,6 @@ class AdminCalendar {
   applyLocal(mode:BulkMode,cells:Cell[]){
     for(const c of cells){
       const idx=this.slots.findIndex(s=>Math.abs(new Date(s.starts_at).getTime()-new Date(c.starts_at).getTime())<1000&&Math.abs(new Date(s.ends_at).getTime()-new Date(c.ends_at).getTime())<1000)
-      if(mode==='delete'){if(idx>=0)this.slots.splice(idx,1);continue}
       if(idx>=0)this.slots[idx]={...this.slots[idx],status:mode,public_visibility:'visible',source:'manual'}
       else this.slots.push({id:this.syntheticId--,starts_at:c.starts_at,ends_at:c.ends_at,status:mode,public_visibility:'visible',source:'manual'})
     }
@@ -86,7 +85,6 @@ class AdminCalendar {
     if(this.busy)return
     const cells=this.selectedCells()
     if(!cells.length){this.notice='Selecione um ou mais horários primeiro.';this.renderNotice();return}
-    if(mode==='delete'&&!confirm(`Excluir ${cells.length} horário(s) selecionado(s)?`))return
     this.busy=true
     this.host.querySelectorAll<HTMLButtonElement>('[data-bulk]').forEach(b=>b.disabled=true)
     const r=await fetch('/api/admin/availability/bulk',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mode,cells:cells.map(c=>({starts_at:c.starts_at,ends_at:c.ends_at}))})})
@@ -126,7 +124,6 @@ class AdminCalendar {
           <button data-bulk="free">Marcar como livre</button>
           <button data-bulk="occupied">Marcar como ocupado</button>
           <button data-bulk="blocked">Marcar como bloqueado</button>
-          <button data-bulk="delete" class="danger">Excluir cadastro</button>
           <button data-clear>Limpar seleção</button>
         </div>
         <small>Clique para selecionar. Use <strong>Shift + clique</strong> para selecionar uma faixa.</small>
