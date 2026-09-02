@@ -22,6 +22,7 @@ import { installProfessionalPresentationEnhancer } from './professional-presenta
 import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCareEnhancer } from './homepage-care-enhancer'
+import { installCancellationPolicyEnhancer } from './cancellation-policy-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -36,6 +37,7 @@ import './professional-presentation.css'
 import './clinical-care-section.css'
 import './contact-section.css'
 import './homepage-care.css'
+import './cancellation-policy.css'
 
 const path = window.location.pathname
 
@@ -106,4 +108,5 @@ installPatientConsultationsEnhancer()
 installProfessionalPresentationEnhancer()
 installHomepageCareEnhancer()
 installContactSectionEnhancer()
+installCancellationPolicyEnhancer()
 installPatientRouteSync()
