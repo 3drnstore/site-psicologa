@@ -5,6 +5,63 @@ const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,
 const nowIso=()=>new Date().toISOString()
 const plusMinutes=(minutes:number)=>new Date(Date.now()+minutes*60000).toISOString()
 
+async function hasColumn(env:Env,table:string,column:string){
+  const result=await env.DB.prepare(`PRAGMA table_info(${table})`).all<any>()
+  return (result.results||[]).some((row:any)=>row.name===column)
+}
+
+async function addColumn(env:Env,table:string,column:string,definition:string){
+  if(!(await hasColumn(env,table,column))){
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run()
+  }
+}
+
+let reserveSchemaReady=false
+async function ensureReserveSchema(env:Env){
+  if(reserveSchemaReady)return
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run()
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id INTEGER NOT NULL,
+    availability_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending_payment',
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    payment_method TEXT,
+    payment_provider TEXT,
+    payment_external_id TEXT,
+    google_calendar_event_id TEXT,
+    reserved_until TEXT,
+    paid_at TEXT,
+    cancellation_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run()
+
+  await addColumn(env,'appointments','amount_cents','INTEGER NOT NULL DEFAULT 0')
+  await addColumn(env,'appointments','reserved_until','TEXT')
+  await addColumn(env,'appointments','payment_method','TEXT')
+  await addColumn(env,'appointments','payment_provider','TEXT')
+  await addColumn(env,'appointments','payment_external_id','TEXT')
+  await addColumn(env,'appointments','google_calendar_event_id','TEXT')
+  await addColumn(env,'appointments','paid_at','TEXT')
+  await addColumn(env,'appointments','cancellation_reason','TEXT')
+  await addColumn(env,'appointments','created_at','TEXT')
+  await addColumn(env,'appointments','updated_at','TEXT')
+
+  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('consultation_price_cents','0')`).run()
+  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('card_price_cents','0')`).run()
+  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('pix_price_cents','0')`).run()
+  await env.DB.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('hold_minutes','15')`).run()
+
+  reserveSchemaReady=true
+}
+
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
   if(!token)return null
@@ -20,6 +77,8 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
   if(path!=='/api/appointments/reserve'||request.method!=='POST')return null
 
   try{
+    await ensureReserveSchema(env)
+
     const p=await patient(request,env)
     if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
 
@@ -27,8 +86,6 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     const slotId=Number(data.slot_id)
     if(!slotId)return json({ok:false,message:'Horário inválido.'},400)
 
-    // If this patient already reserved this exact slot and the hold is still valid,
-    // return the same appointment instead of failing or creating a duplicate.
     const existing=await env.DB.prepare(`
       SELECT a.id,a.amount_cents,a.reserved_until,a.status
       FROM appointments a
@@ -57,10 +114,9 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     const holdMinutes=Math.max(5,Number(await setting(env,'hold_minutes','15'))||15)
     const holdUntil=plusMinutes(holdMinutes)
 
-    // Atomic compare-and-set: only one patient can acquire a free slot.
     const hold=await env.DB.prepare(`
       UPDATE availability
-      SET status='held',updated_at=CURRENT_TIMESTAMP
+      SET status='held'
       WHERE id=? AND status='free'
     `).bind(slotId).run()
     if(!Number(hold.meta.changes||0))return json({ok:false,message:'Esse horário acabou de ser reservado por outra pessoa.'},409)
@@ -78,12 +134,12 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
         amount_cents:cardPrice,
       },201)
     }catch(error){
-      await env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='held'`).bind(slotId).run()
+      await env.DB.prepare(`UPDATE availability SET status='free' WHERE id=? AND status='held'`).bind(slotId).run()
       throw error
     }
   }catch(error){
     const detail=error instanceof Error?error.message:String(error)
     console.error('Patient reserve error:',detail)
-    return json({ok:false,message:'Não foi possível reservar este horário. Atualize a página e tente novamente.',detail},500)
+    return json({ok:false,message:`Não foi possível reservar este horário. Detalhe: ${detail}`},500)
   }
 }
