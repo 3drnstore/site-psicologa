@@ -44,6 +44,11 @@ export default {
       if (response) return response
     }
 
+    if (path === '/api/appointments/reserve' && request.method === 'POST') {
+      const response = await handlePatientReserveV2(request, env, path)
+      if (response) return response
+    }
+
     const isAgendaRoute =
       (path === '/api/admin/availability' && request.method === 'POST') ||
       path === '/api/admin/availability/bulk' ||
@@ -90,11 +95,6 @@ export default {
     }
 
     if (path.startsWith('/api/')) await ensureSchema(env)
-
-    if (path === '/api/appointments/reserve' && request.method === 'POST') {
-      const response = await handlePatientReserveV2(request, env, path)
-      if (response) return response
-    }
 
     if (path.startsWith('/api/auth/google/')) {
       const response = await handleGoogleAuth(request, env)
