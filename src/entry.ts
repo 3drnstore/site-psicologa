@@ -6,6 +6,7 @@ import { handlePaymentsV2 } from './payments-v2'
 import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
+import { handleAuthLoginFast } from './auth-login-fast'
 import { handleAgendaCreate } from './agenda-create'
 import { handleAgendaDelete } from './agenda-delete'
 import { handleAgendaBulk } from './agenda-bulk'
@@ -32,6 +33,9 @@ export default {
       const response = await handleAdminSetup(request, env)
       if (response) return response
     }
+
+    const fastAuth = await handleAuthLoginFast(request, env, path)
+    if (fastAuth) return fastAuth
 
     const authV2 = await handleAuthV2(request, env, path)
     if (authV2) return authV2
