@@ -15,9 +15,19 @@ function syncPatientRoute(){
   }
 }
 
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.patient-page,.site-shell')||Boolean(node.querySelector('.patient-page,.site-shell'))
+  }))
+}
+
 export function installPatientRouteSync(){
   if(installed)return
   installed=true
   syncPatientRoute()
-  new MutationObserver(syncPatientRoute).observe(document.body,{childList:true,subtree:true})
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))syncPatientRoute()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',syncPatientRoute)
+  window.addEventListener('popstate',syncPatientRoute)
 }
