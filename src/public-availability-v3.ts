@@ -6,6 +6,7 @@ const nowIso=()=>new Date().toISOString()
 const defaultFrom=()=>new Date(Date.now()-7*86400000).toISOString()
 let lastExpiredCleanupAt=0
 let cleanupRunning:Promise<void>|null=null
+const EXPIRED_CLEANUP_INTERVAL=15*60_000
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
@@ -15,7 +16,7 @@ async function patient(request:Request,env:Env){
 
 async function releaseExpired(env:Env){
   const now=Date.now()
-  if(now-lastExpiredCleanupAt<60_000)return
+  if(now-lastExpiredCleanupAt<EXPIRED_CLEANUP_INTERVAL)return
   if(cleanupRunning)return cleanupRunning
   cleanupRunning=(async()=>{
     try{
@@ -49,7 +50,7 @@ export async function handlePublicAvailabilityV3(request:Request,env:Env,path:st
         ELSE 'occupied'
       END AS public_status
     FROM availability
-    WHERE COALESCE(public_visibility,'visible')='visible' AND starts_at>=? AND starts_at<=?
+    WHERE public_visibility='visible' AND starts_at>=? AND starts_at<=?
     ORDER BY starts_at ASC
   `).bind(from,to).all<any>()
   const settings=await env.DB.prepare(`SELECT key,value FROM settings WHERE key IN ('consultation_price_cents','card_price_cents','pix_price_cents')`).all<any>()
