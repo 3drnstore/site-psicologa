@@ -18,10 +18,19 @@ function ensureStyle(){
   `;document.head.appendChild(style)
 }
 
+function relabelLegacyForm(form:HTMLFormElement|null){
+  if(!form)return
+  const labels=[...form.querySelectorAll<HTMLLabelElement>('label')]
+  const first=labels[0],second=labels[1]
+  if(first){const input=first.querySelector('input');first.childNodes.forEach(n=>{if(n.nodeType===Node.TEXT_NODE)n.textContent=''}) ;first.insertBefore(document.createTextNode('Valor Pix (R$)'),input||first.firstChild)}
+  if(second){const input=second.querySelector('input');second.childNodes.forEach(n=>{if(n.nodeType===Node.TEXT_NODE)n.textContent=''}) ;second.insertBefore(document.createTextNode('Valor Cartão (R$)'),input||second.firstChild)}
+}
+
 async function enhanceAdmin(){
   const panel=document.querySelector<HTMLElement>('.settings-panel')
   if(!panel||panel.querySelector('.pricing-v2-admin'))return
   const oldForm=panel.querySelector<HTMLFormElement>('form.admin-form')
+  relabelLegacyForm(oldForm)
   let s:any={}
   try{const data=await getJson('/api/admin/settings');s=data.settings||{}}
   catch(err){
@@ -38,7 +47,7 @@ async function enhanceAdmin(){
   const pix=Number(s.pix_price_cents??legacy)
   const card=Number(s.card_price_cents??legacy)
   const form=document.createElement('form');form.className='pricing-v2-admin'
-  form.innerHTML=`<div><h2 class="pricing-v2-title">Valores da sessão</h2><div class="pricing-v2-note">Defina separadamente os valores cobrados conforme a forma de pagamento. Eles serão apresentados ao paciente de forma informativa no fluxo de agendamento, sem linguagem promocional.</div></div><div class="pricing-grid"><label>Valor da sessão — Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(pix/100).toFixed(2)}"></label><label>Valor da sessão — Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(card/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
+  form.innerHTML=`<div><h2 class="pricing-v2-title">Atendimento e cobrança</h2><div class="pricing-v2-note">Defina separadamente os valores cobrados conforme a forma de pagamento. Eles serão apresentados ao paciente de forma informativa no fluxo de agendamento, sem linguagem promocional.</div></div><div class="pricing-grid"><label>Valor Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(pix/100).toFixed(2)}"></label><label>Valor Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(card/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
   panel.appendChild(form)
   form.addEventListener('submit',async e=>{
     e.preventDefault();const fd=new FormData(form),btn=form.querySelector<HTMLButtonElement>('button')!;btn.disabled=true
