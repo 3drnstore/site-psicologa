@@ -20,6 +20,7 @@ import { installPatientConsultationsEnhancer } from './patient-consultations-enh
 import { installD1FetchCache } from './d1-fetch-cache'
 import { installHomepageProcessCopy } from './homepage-process-copy'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
+import { installTccSectionEnhancer } from './tcc-section-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -95,3 +96,4 @@ installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installHomepageProcessCopy()
 installProfessionalPresentationEnhancer()
+installTccSectionEnhancer()
