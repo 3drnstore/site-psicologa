@@ -190,7 +190,15 @@ class AdminCalendar {
   }
 }
 
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.admin-page,.admin-panel')||Boolean(node.querySelector('.admin-page,.admin-panel'))
+  }))
+}
+
 export function installAdminCalendarEnhancer(){
+  let scheduled:number|undefined
   const enhance=()=>{
     document.querySelectorAll<HTMLElement>('.admin-panel').forEach(panel=>{
       const h=panel.querySelector('h2')?.textContent?.trim()
@@ -206,6 +214,12 @@ export function installAdminCalendarEnhancer(){
       void calendar.load().catch(e=>{host!.innerHTML=`<div class="error-box">${e instanceof Error?e.message:String(e)}</div>`})
     })
   }
-  enhance()
-  new MutationObserver(enhance).observe(document.body,{childList:true,subtree:true})
+  const schedule=()=>{
+    if(scheduled)window.clearTimeout(scheduled)
+    scheduled=window.setTimeout(()=>{scheduled=undefined;enhance()},80)
+  }
+  schedule()
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',schedule)
 }
