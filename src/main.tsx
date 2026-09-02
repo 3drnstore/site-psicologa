@@ -31,6 +31,7 @@ import './patient-booking-khaki.css'
 import './patient-consultations.css'
 import './patient-selection-fix.css'
 import './professional-presentation.css'
+import './clinical-care-section.css'
 
 const path = window.location.pathname
 
