@@ -93,11 +93,20 @@ function scan(){
   document.querySelectorAll<HTMLElement>('.google-calendar-admin .work-grid').forEach(grid=>{void enrichGrid(grid)})
 }
 
+function relevantMutation(records:MutationRecord[]){
+  return records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.google-calendar-admin,.work-grid,.admin-page')||Boolean(node.querySelector('.google-calendar-admin,.work-grid,.admin-page'))
+  }))
+}
+
 export function installAdminAppointmentEnhancer(){
   const schedule=()=>{
     if(scheduled)window.clearTimeout(scheduled)
     scheduled=window.setTimeout(()=>{scheduled=undefined;scan()},120)
   }
   schedule()
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevantMutation(records))schedule()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',schedule)
 }
