@@ -1,0 +1,21 @@
+@media(min-width:901px){
+  .patient-page .availability-day .time{
+    height:66px!important;
+    min-height:66px!important;
+    max-height:66px!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+    transform:none!important;
+    transition:background-color .08s ease,border-color .08s ease,color .08s ease,box-shadow .08s ease!important;
+  }
+  .patient-page .availability-day .time:hover,
+  .patient-page .availability-day .time.selected{
+    height:66px!important;
+    min-height:66px!important;
+    max-height:66px!important;
+    transform:none!important;
+  }
+  .patient-page .availability-day .time.selected svg:last-child:not(:first-child){
+    flex:0 0 auto;
+  }
+}
