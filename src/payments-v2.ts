@@ -84,6 +84,19 @@ function sumUpPixArtifacts(data:any){
 }
 
 export async function handlePaymentsV2(request:Request,env:Env,path:string,ctx:ExecutionContext):Promise<Response|null>{
+  if(path==='/api/payments/pix-qr'&&request.method==='GET'){
+    const p=await patient(request,env); if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
+    const paymentId=Number(new URL(request.url).searchParams.get('payment_id')||0)
+    if(!paymentId)return json({ok:false,message:'Pagamento inválido.'},400)
+    const payment=await env.DB.prepare(`SELECT pay.pix_qr_code,pay.provider FROM payments pay JOIN appointments a ON a.id=pay.appointment_id WHERE pay.id=? AND a.patient_id=?`).bind(paymentId,p.id).first<any>()
+    if(!payment||payment.provider!=='sumup'||!payment.pix_qr_code)return json({ok:false,message:'QR Code não encontrado.'},404)
+    if(!env.SUMUP_API_KEY)return json({ok:false,message:'SumUp ainda não configurada.'},503)
+    const qr=await fetch(String(payment.pix_qr_code),{headers:{authorization:`Bearer ${env.SUMUP_API_KEY}`}})
+    if(!qr.ok)return json({ok:false,message:'Não foi possível carregar o QR Code Pix.'},502)
+    const headers=new Headers();headers.set('content-type',qr.headers.get('content-type')||'image/jpeg');headers.set('cache-control','private, no-store')
+    return new Response(qr.body,{status:200,headers})
+  }
+
   if(path==='/api/payments/checkout'&&request.method==='POST'){
     const p=await patient(request,env); if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
     const data=await request.json().catch(()=>({})) as any
@@ -123,7 +136,7 @@ export async function handlePaymentsV2(request:Request,env:Env,path:string,ctx:E
       if(!artifacts.copyPaste&&!artifacts.qrCode){await env.DB.prepare(`UPDATE payments SET status='failed',external_id=?,raw_status='pix_artifact_missing' WHERE id=?`).bind(checkoutId,paymentId).run();return json({ok:false,message:'A SumUp criou a cobrança, mas não retornou o QR Code Pix.'},502)}
       await env.DB.prepare(`UPDATE payments SET external_id=?,pix_qr_code=?,pix_copy_paste=?,raw_status=? WHERE id=?`).bind(checkoutId,artifacts.qrCode,artifacts.copyPaste,String(processed.status||'PENDING'),paymentId).run()
       await env.DB.prepare(`UPDATE appointments SET payment_provider='sumup',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(checkoutId,appointmentId).run()
-      return json({ok:true,payment_id:paymentId,provider:'sumup',pix_qr_code:artifacts.qrCode,pix_copy_paste:artifacts.copyPaste,amount_cents:amount})
+      return json({ok:true,payment_id:paymentId,provider:'sumup',pix_qr_code:artifacts.qrCode?`/api/payments/pix-qr?payment_id=${paymentId}`:null,pix_copy_paste:artifacts.copyPaste,amount_cents:amount})
     }
 
     if(!env.INFINITEPAY_HANDLE)return json({ok:false,payment_id:paymentId,message:'InfinitePay ainda não configurada.'},503)
