@@ -99,18 +99,31 @@ async function enhance(){
         const slot=daySlots.find(s=>timeOnly(s.starts_at)===match[1])
         if(!slot)return
         const status=slot.public_status||'occupied'
+        const passed=new Date(slot.starts_at).getTime()<=Date.now()
         button.dataset.publicStatus=status
+        button.dataset.past=passed?'1':'0'
         let label=button.querySelector<HTMLElement>('[data-patient-status]')
         if(!label){const existing=button.querySelector<HTMLElement>('span');label=existing||document.createElement('span');label.dataset.patientStatus='1';if(!existing)button.appendChild(label)}
-        if(status==='blocked'){label.textContent='Bloqueado';button.classList.add('blocked')}
-        else if(status==='occupied'){label.textContent='Ocupado';button.classList.remove('blocked')}
-        else{
+
+        if(status==='blocked'){
+          label.textContent='Bloqueado';button.classList.add('blocked');button.disabled=true
+        }else if(status==='occupied'){
+          label.textContent='Ocupado';button.classList.remove('blocked');button.disabled=true
+        }else if(passed){
+          label.textContent='Indisponível';button.classList.remove('blocked');button.classList.add('past');button.disabled=true
+          button.style.setProperty('background','#f2f1ed','important')
+          button.style.setProperty('border-color','#e0ddd6','important')
+          button.style.setProperty('color','#8a8a82','important')
+          button.style.setProperty('cursor','default','important')
+        }else{
           freeCount++
-          label.textContent='Disponível';button.classList.remove('blocked')
+          label.textContent='Disponível';button.classList.remove('blocked','past');button.disabled=false
+          button.style.removeProperty('cursor')
           if(!button.dataset.reserveSurfaceBound){button.dataset.reserveSurfaceBound='1';button.addEventListener('click',()=>surfaceReserveAction(button))}
         }
+
         if(isMobile()){
-          if(status!=='free')button.style.setProperty('display','none','important')
+          if(status!=='free'||passed)button.style.setProperty('display','none','important')
           else{
             button.style.setProperty('display','grid','important')
             button.style.setProperty('min-height','66px','important')
