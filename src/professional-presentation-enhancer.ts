@@ -12,7 +12,7 @@ function ensurePresentation(){
     <h2>Apresentação</h2>
     <p>Este espaço será destinado à apresentação da psicóloga, sua formação, abordagem profissional e experiência clínica.</p>
     <p>O texto poderá explicar de forma acolhedora como é conduzido o atendimento psicológico online e para quais públicos o acompanhamento é oferecido.</p>
-    <p class="professional-crp">CRP: 00/00000</p>
+    <p class="professional-crp">CRP: 06/212470</p>
   `
   art.prepend(presentation)
 
