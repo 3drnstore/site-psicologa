@@ -108,7 +108,7 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
     const pwd=await hashPassword(newPassword)
     await env.DB.prepare('UPDATE patients SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,patient.id).run()
     await env.DB.prepare('DELETE FROM sessions WHERE patient_id=?').bind(patient.id).run()
-    return json({ok:true,message:'Senha alterada com sucesso. Entre novamente com a nova senha.','set-cookie':clearCookie(PATIENT_COOKIE)})
+    return json({ok:true,message:'Senha alterada com sucesso. Entre novamente com a nova senha.'},200,{'set-cookie':clearCookie(PATIENT_COOKIE)})
   }
 
   if(path==='/api/admin/login' && request.method==='POST'){
