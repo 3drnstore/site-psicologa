@@ -203,6 +203,18 @@ async function enhance(){
 }
 
 export function installPatientCalendarEnhancer(){
-  const schedule=()=>{if(scheduled)window.clearTimeout(scheduled);scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},120)}
-  schedule();new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true})
+  const schedule=()=>{
+    if(scheduled)return
+    scheduled=window.setTimeout(()=>{scheduled=undefined;void enhance()},120)
+  }
+  const relevant=(records:MutationRecord[])=>records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>{
+    if(!(node instanceof HTMLElement))return false
+    return node.matches('.patient-page,.availability-list,.availability-day,.time,.booking-summary')||Boolean(node.querySelector('.patient-page,.availability-list,.availability-day,.time,.booking-summary'))
+  }))
+
+  schedule()
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(records=>{if(relevant(records))schedule()}).observe(root,{childList:true,subtree:true})
+  window.addEventListener('resize',schedule,{passive:true})
+  window.addEventListener('pageshow',schedule)
 }
