@@ -13,6 +13,7 @@ import { installPatientPaymentEnhancer } from './patient-payment-enhancer'
 import { installPaymentProviderCopyEnhancer } from './payment-provider-copy-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
+import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -74,3 +75,4 @@ installPatientPaymentEnhancer()
 installPaymentProviderCopyEnhancer()
 installAdminAppointmentEnhancer()
 installPricingUiEnhancer()
+installPatientMessageEnhancer()
