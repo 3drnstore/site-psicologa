@@ -1,0 +1,42 @@
+.conversation-cta {
+  padding: 84px 4vw;
+  background: #f3efe3;
+}
+
+.conversation-cta-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 54px 58px;
+  border: 1px solid #d8d2c3;
+  border-radius: 28px;
+  background: rgba(255,255,255,.72);
+  box-shadow: 0 18px 45px rgba(28, 52, 46, .06);
+}
+
+.conversation-cta h2 {
+  margin: 12px 0 18px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(42px, 5vw, 68px);
+  font-weight: 400;
+  line-height: 1.05;
+  color: #173f38;
+}
+
+.conversation-cta p {
+  max-width: 760px;
+  margin: 0 0 30px;
+  font-size: 17px;
+  line-height: 1.75;
+  color: #5f6d68;
+}
+
+.conversation-booking-button {
+  min-width: 210px;
+}
+
+@media (max-width: 700px) {
+  .conversation-cta { padding: 64px 20px; }
+  .conversation-cta-inner { padding: 38px 28px; border-radius: 22px; }
+  .conversation-cta p { font-size: 16px; }
+  .conversation-booking-button { width: 100%; }
+}
