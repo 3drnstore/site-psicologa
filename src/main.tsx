@@ -19,6 +19,7 @@ import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
 import { installD1FetchCache } from './d1-fetch-cache'
 import { installHomepageProcessCopy } from './homepage-process-copy'
+import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -29,6 +30,7 @@ import './patient-portal.css'
 import './patient-booking-khaki.css'
 import './patient-consultations.css'
 import './patient-selection-fix.css'
+import './professional-presentation.css'
 
 const path = window.location.pathname
 
@@ -91,3 +93,4 @@ installPatientMessageEnhancer()
 installPatientSelectionEnhancer()
 installPatientConsultationsEnhancer()
 installHomepageProcessCopy()
+installProfessionalPresentationEnhancer()
