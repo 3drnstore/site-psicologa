@@ -23,6 +23,7 @@ import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCtaSafe } from './homepage-cta-safe'
 import { installProfessionalIdentitySafe } from './professional-identity-safe'
+import { installAccessibilitySafe } from './accessibility-safe'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -37,6 +38,7 @@ import './professional-presentation.css'
 import './clinical-care-section.css'
 import './contact-section.css'
 import './homepage-cta-safe.css'
+import './accessibility-safe.css'
 
 const path = window.location.pathname
 
@@ -108,4 +110,5 @@ installProfessionalPresentationEnhancer()
 installProfessionalIdentitySafe()
 installContactSectionEnhancer()
 installHomepageCtaSafe()
+installAccessibilitySafe()
 installPatientRouteSync()
