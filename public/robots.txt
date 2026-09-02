@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /paciente
+Disallow: /recuperar-senha
+Disallow: /api/
+
+Sitemap: https://site-psicologa.thiagodrn2.workers.dev/sitemap.xml
