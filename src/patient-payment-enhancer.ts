@@ -1,7 +1,9 @@
 let installed=false
 let pollTimer:number|undefined
+let lastSelected:{date:string;time:string}|null=null
 
 const money=(cents:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((cents||0)/100)
+const timeOnly=(value:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(value))
 
 async function getJson(path:string,init?:RequestInit){
   const r=await fetch(path,{credentials:'include',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
@@ -27,12 +29,54 @@ function ensureStyle(){
   document.head.appendChild(style)
 }
 
+function showMessage(text:string){
+  let box=document.querySelector<HTMLElement>('.patient-page .info-box')
+  if(!box){box=document.createElement('div');box.className='info-box';document.querySelector('.patient-page .patient-content')?.prepend(box)}
+  box.textContent=text
+}
+
 function closeModal(){document.querySelector('.patient-payment-backdrop')?.remove();if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}}
 function setStatus(text:string,type:'normal'|'success'|'error'='normal'){const el=document.querySelector<HTMLElement>('.patient-payment-status');if(!el)return;el.className=`patient-payment-status${type==='normal'?'':` ${type}`}`;el.textContent=text}
 async function latestPendingAppointment(){const data=await getJson('/api/appointments/mine');const list=(data.appointments||[]).filter((a:any)=>a.status==='pending_payment'&&(!a.reserved_until||new Date(a.reserved_until).getTime()>Date.now()));list.sort((a:any,b:any)=>Number(b.id)-Number(a.id));return list[0]||null}
+async function syncAppointment(appointmentId:number){try{return await getJson(`/api/payments/status/${appointmentId}`)}catch{return null}}
 
-async function syncAppointment(appointmentId:number){
-  try{return await getJson(`/api/payments/status/${appointmentId}`)}catch{return null}
+async function resolveSelectedSlot(){
+  const selected=document.querySelector<HTMLButtonElement>('.patient-page .time.selected')
+  const button=selected||document.querySelector<HTMLButtonElement>('.patient-page .time[data-payment-selected="1"]')
+  const section=button?.closest<HTMLElement>('.availability-day')
+  const rawDate=section?.dataset.patientDate||lastSelected?.date||''
+  const match=(button?.textContent||lastSelected?.time||'').match(/(\d{2}:\d{2})/)
+  const wantedTime=match?.[1]||lastSelected?.time||''
+  if(!rawDate||!wantedTime)throw new Error('Selecione um horário disponível antes de reservar.')
+  const data=await getJson('/api/availability')
+  const day=new Date(rawDate); const y=day.getFullYear(),m=day.getMonth(),d=day.getDate()
+  const slot=(data.slots||[]).find((s:any)=>{const sd=new Date(s.starts_at);return sd.getFullYear()===y&&sd.getMonth()===m&&sd.getDate()===d&&timeOnly(s.starts_at)===wantedTime&&s.public_status==='free'&&sd.getTime()>Date.now()})
+  if(!slot)throw new Error('Esse horário não está mais disponível. Atualize a agenda e escolha outro horário.')
+  return slot
+}
+
+function renderPaymentChoices(){
+  const summary=document.querySelector<HTMLElement>('.patient-page .booking-summary')
+  if(!summary)return
+  summary.querySelectorAll('.payment-actions').forEach(el=>el.remove())
+  summary.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{if((b.textContent||'').toLowerCase().includes('reservar horário'))b.remove()})
+  const actions=document.createElement('div')
+  actions.className='payment-actions'
+  actions.innerHTML='<button type="button" class="primary-button">Pix • Mercado Pago</button><button type="button" class="secondary-button">Cartão • InfinitePay</button>'
+  summary.appendChild(actions)
+}
+
+async function reserve(button:HTMLButtonElement){
+  if(button.disabled)return
+  const old=button.textContent||'Reservar horário';button.disabled=true;button.textContent='Reservando…'
+  try{
+    const slot=await resolveSelectedSlot()
+    const r=await getJson('/api/appointments/reserve',{method:'POST',body:JSON.stringify({slot_id:slot.id})})
+    showMessage('Horário reservado temporariamente. Escolha a forma de pagamento para confirmar o agendamento.')
+    renderPaymentChoices()
+    document.querySelector<HTMLElement>('.patient-page .booking-summary')?.scrollIntoView({behavior:'smooth',block:'center'})
+    return r
+  }catch(err){showMessage(err instanceof Error?err.message:String(err));button.disabled=false;button.textContent=old}
 }
 
 function openPixModal(data:any,appointmentId:number){
@@ -58,13 +102,40 @@ function openPixModal(data:any,appointmentId:number){
 async function startPix(button:HTMLButtonElement){
   if(button.disabled)return
   const old=button.textContent||'Pix';button.disabled=true;button.textContent='Gerando Pix…'
-  try{
-    const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.')
-    const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'pix'})})
-    if(data.status==='approved'){window.location.reload();return}
-    openPixModal(data,Number(ap.id))
-  }catch(err){const msg=err instanceof Error?err.message:String(err);let box=document.querySelector<HTMLElement>('.patient-page .info-box');if(!box){box=document.createElement('div');box.className='info-box';document.querySelector('.patient-page .patient-content')?.prepend(box)}box.textContent=msg}
+  try{const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.');const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'pix'})});if(data.status==='approved'){window.location.reload();return}openPixModal(data,Number(ap.id))}
+  catch(err){showMessage(err instanceof Error?err.message:String(err))}
   finally{button.disabled=false;button.textContent=old}
 }
 
-export function installPatientPaymentEnhancer(){if(installed)return;installed=true;ensureStyle();document.addEventListener('click',e=>{const target=e.target as HTMLElement|null;const button=target?.closest<HTMLButtonElement>('.patient-page .payment-actions button');if(!button)return;const text=(button.textContent||'').trim().toLowerCase();if(!text.startsWith('pix'))return;e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.();void startPix(button)},true)}
+async function startCard(button:HTMLButtonElement){
+  if(button.disabled)return
+  const old=button.textContent||'Cartão';button.disabled=true;button.textContent='Abrindo pagamento…'
+  try{const ap=await latestPendingAppointment();if(!ap)throw new Error('Não encontrei uma reserva aguardando pagamento. Selecione o horário novamente.');const data=await getJson('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:ap.id,method:'card'})});if(!data.checkout_url)throw new Error('A InfinitePay não retornou o link de pagamento.');window.location.href=data.checkout_url}
+  catch(err){showMessage(err instanceof Error?err.message:String(err));button.disabled=false;button.textContent=old}
+}
+
+export function installPatientPaymentEnhancer(){
+  if(installed)return;installed=true;ensureStyle()
+  document.addEventListener('click',e=>{
+    const target=e.target as HTMLElement|null
+    const slot=target?.closest<HTMLButtonElement>('.patient-page .time')
+    if(slot&&slot.dataset.publicStatus==='free'&&!slot.disabled){
+      document.querySelectorAll<HTMLButtonElement>('.patient-page .time[data-payment-selected="1"]').forEach(b=>delete b.dataset.paymentSelected)
+      slot.dataset.paymentSelected='1'
+      const section=slot.closest<HTMLElement>('.availability-day')
+      const tm=(slot.textContent||'').match(/(\d{2}:\d{2})/)?.[1]||''
+      if(section?.dataset.patientDate&&tm)lastSelected={date:section.dataset.patientDate,time:tm}
+      return
+    }
+    const reserveButton=target?.closest<HTMLButtonElement>('.patient-page .booking-summary button')
+    if(reserveButton&&(reserveButton.textContent||'').toLowerCase().includes('reservar horário')){
+      e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.();void reserve(reserveButton);return
+    }
+    const button=target?.closest<HTMLButtonElement>('.patient-page .payment-actions button')
+    if(!button)return
+    const text=(button.textContent||'').trim().toLowerCase()
+    e.preventDefault();e.stopPropagation();(e as any).stopImmediatePropagation?.()
+    if(text.startsWith('pix'))void startPix(button)
+    else if(text.startsWith('cartão')||text.startsWith('cartao'))void startCard(button)
+  },true)
+}
