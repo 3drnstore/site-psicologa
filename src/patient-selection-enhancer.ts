@@ -30,6 +30,11 @@ function selectImmediately(slot:HTMLButtonElement){
   }
 }
 
+function scheduleEnable(){
+  window.requestAnimationFrame(enableReserve)
+  window.setTimeout(enableReserve,120)
+}
+
 export function installPatientSelectionEnhancer(){
   if(installed)return
   installed=true
@@ -39,10 +44,15 @@ export function installPatientSelectionEnhancer(){
     const slot=target?.closest<HTMLButtonElement>('.patient-page .time[data-public-status="free"]')
     if(!slot||slot.disabled)return
     selectImmediately(slot)
+    scheduleEnable()
   }
 
   document.addEventListener('pointerdown',handle,true)
   document.addEventListener('click',handle,true)
-
-  new MutationObserver(()=>window.requestAnimationFrame(enableReserve)).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','disabled','data-payment-selected']})
+  document.addEventListener('click',event=>{
+    const target=event.target as HTMLElement|null
+    if(target?.closest('.patient-page'))scheduleEnable()
+  },true)
+  window.addEventListener('pageshow',scheduleEnable)
+  scheduleEnable()
 }
