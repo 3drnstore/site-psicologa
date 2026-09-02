@@ -10,6 +10,7 @@ import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installPatientWelcomeEnhancer } from './patient-welcome-enhancer'
 import { installPatientPaymentEnhancer } from './patient-payment-enhancer'
+import { installPaymentProviderCopyEnhancer } from './payment-provider-copy-enhancer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import './styles.css'
@@ -70,5 +71,6 @@ installPatientCalendarEnhancer()
 installPatientPortalEnhancer()
 installPatientWelcomeEnhancer()
 installPatientPaymentEnhancer()
+installPaymentProviderCopyEnhancer()
 installAdminAppointmentEnhancer()
 installPricingUiEnhancer()
