@@ -20,6 +20,7 @@ import './app-extra.css'
 import './v2.css'
 import './admin-calendar.css'
 import './patient-calendar.css'
+import './patient-calendar-boot.css'
 import './patient-portal.css'
 import './patient-selection-fix.css'
 
