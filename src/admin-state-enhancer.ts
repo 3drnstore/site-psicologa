@@ -10,9 +10,11 @@ const labelToTab = (label: string) => {
 const tabToLabel = (tab: string) => tab === 'pacientes' ? 'Pacientes' : tab === 'configuracoes' ? 'Configurações' : 'Agenda'
 
 export function installAdminStateEnhancer() {
+  let installed = false
+
   const bind = () => {
     const sidebar = document.querySelector<HTMLElement>('.admin-sidebar')
-    if (!sidebar) return
+    if (!sidebar) return false
 
     if (!sidebar.dataset.stateBound) {
       sidebar.dataset.stateBound = '1'
@@ -33,8 +35,20 @@ export function installAdminStateEnhancer() {
         if (target && !target.classList.contains('active')) target.click()
       }
     }
+
+    installed = true
+    return true
   }
 
-  bind()
-  new MutationObserver(bind).observe(document.body, { childList: true, subtree: true })
+  let attempts = 0
+  const retry = () => {
+    attempts += 1
+    if (bind() || attempts >= 24) return
+    window.setTimeout(retry, 75)
+  }
+  retry()
+
+  window.addEventListener('pageshow', () => {
+    if (!installed || document.querySelector('.admin-sidebar')) bind()
+  })
 }
