@@ -7,6 +7,11 @@ function applyHomepageCta() {
 
   const heroActions = shell.querySelector<HTMLElement>('.hero .hero-actions')
   heroActions?.querySelector<HTMLButtonElement>('.primary-button')?.remove()
+  const therapyLink = heroActions?.querySelector<HTMLAnchorElement>('.secondary-button')
+  if (therapyLink) {
+    therapyLink.textContent = 'Como funciona a terapia'
+    therapyLink.href = '#como-funciona'
+  }
   shell.querySelector<HTMLElement>('.hero .trust-row')?.remove()
 
   const faq = main.querySelector<HTMLElement>('.faq#duvidas')
