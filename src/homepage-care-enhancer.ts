@@ -1,4 +1,7 @@
 let installed = false
+let scheduled = false
+
+const HERO_COPY = 'Psicoterapia online em Terapia Cognitivo-Comportamental (TCC), com sessões individuais de 50 minutos, escuta cuidadosa, ética e respeito ao seu tempo.'
 
 function ensureCareSections() {
   const shell = document.querySelector<HTMLElement>('.site-shell')
@@ -6,8 +9,8 @@ function ensureCareSections() {
   if (!shell || !main) return
 
   const heroParagraph = shell.querySelector<HTMLElement>('.hero .hero-copy > p')
-  if (heroParagraph) {
-    heroParagraph.textContent = 'Psicoterapia online em Terapia Cognitivo-Comportamental (TCC), com sessões individuais de 50 minutos, escuta cuidadosa, ética e respeito ao seu tempo.'
+  if (heroParagraph && heroParagraph.textContent !== HERO_COPY) {
+    heroParagraph.textContent = HERO_COPY
   }
 
   const heroActions = shell.querySelector<HTMLElement>('.hero .hero-actions')
@@ -90,9 +93,18 @@ function ensureCareSections() {
   }
 }
 
+function scheduleEnsure() {
+  if (scheduled) return
+  scheduled = true
+  requestAnimationFrame(() => {
+    scheduled = false
+    ensureCareSections()
+  })
+}
+
 export function installHomepageCareEnhancer() {
   if (installed) return
   installed = true
   ensureCareSections()
-  new MutationObserver(ensureCareSections).observe(document.body, { childList: true, subtree: true })
+  new MutationObserver(scheduleEnsure).observe(document.body, { childList: true, subtree: true })
 }
