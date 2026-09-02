@@ -6,15 +6,15 @@ const cache=new Map<string,CacheEntry>()
 const pending=new Map<string,PendingEntry>()
 
 const TTL:Record<string,number>={
-  '/api/availability':60000,
-  '/api/appointments/mine':60000,
-  '/api/admin/appointments':30000,
-  '/api/admin/patients':60000,
-  '/api/admin/settings':60000,
-  '/api/admin/availability-v2':30000,
+  '/api/availability':10*60*1000,
+  '/api/appointments/mine':5*60*1000,
+  '/api/admin/appointments':2*60*1000,
+  '/api/admin/patients':5*60*1000,
+  '/api/admin/settings':10*60*1000,
+  '/api/admin/availability-v2':2*60*1000,
 }
-const ERROR_TTL=5000
-const PAYMENT_STATUS_TTL=12000
+const ERROR_TTL=30000
+const PAYMENT_STATUS_TTL=15000
 const AUTH_STATE_PATHS=new Set(['/api/me','/api/admin/me'])
 
 function sameOriginUrl(input:RequestInfo|URL){
