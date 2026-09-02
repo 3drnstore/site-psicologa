@@ -4,6 +4,7 @@ import App from './App'
 import AppErrorBoundary from './AppErrorBoundary'
 import AdminSetup from './AdminSetup'
 import PasswordRecovery from './PasswordRecovery'
+import StatusPage from './StatusPage'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
@@ -42,6 +43,7 @@ import './contact-section.css'
 import './homepage-cta-safe.css'
 import './accessibility-safe.css'
 import './app-resilience.css'
+import './status-page.css'
 
 const path = window.location.pathname
 
@@ -83,6 +85,7 @@ function PatientRouteGate() {
 }
 
 function RoutedApp() {
+  if (path === '/status' || path === '/status/') return <StatusPage />
   if (path === '/admin/setup') return <AdminSetup />
   if (path === '/recuperar-senha') return <PasswordRecovery />
   if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
