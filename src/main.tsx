@@ -50,32 +50,67 @@ import './privacy-page.css'
 
 const path = window.location.pathname
 
+type GateState = 'checking' | 'authenticated' | 'anonymous' | 'unavailable'
+
+function SessionUnavailable({ professional = false, onRetry }: { professional?: boolean; onRetry: () => void }) {
+  return <div className="auth-page">
+    <div className="auth-card">
+      <div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>{professional ? 'PsicoGestão' : 'Jacqueline Siqueira'}</strong><small>{professional ? 'Painel profissional' : 'Área do paciente'}</small></div></div>
+      <span className="section-kicker">Conexão temporariamente indisponível</span>
+      <h1>Não foi possível validar sua sessão agora.</h1>
+      <p>Sua sessão não foi encerrada. Aguarde alguns instantes e tente novamente.</p>
+      <button className="primary-button full" type="button" onClick={onRetry}>Tentar novamente</button>
+      <button className="text-button full" type="button" onClick={() => window.location.href='/status'}>Ver status do sistema</button>
+    </div>
+  </div>
+}
+
 function AdminRouteGate() {
-  const [state, setState] = useState<'checking' | 'authenticated' | 'anonymous'>('checking')
+  const [state, setState] = useState<GateState>('checking')
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    fetch('/api/admin/me', { credentials: 'include' })
-      .then(response => setState(response.ok ? 'authenticated' : 'anonymous'))
-      .catch(() => setState('anonymous'))
-  }, [])
+    let active = true
+    setState('checking')
+    fetch('/api/admin/me', { credentials: 'include', cache: 'no-store' })
+      .then(response => {
+        if (!active) return
+        if (response.ok) setState('authenticated')
+        else if (response.status === 401) setState('anonymous')
+        else setState('unavailable')
+      })
+      .catch(() => { if (active) setState('unavailable') })
+    return () => { active = false }
+  }, [attempt])
 
   if (state === 'checking') {
     return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>PsicoGestão</strong><small>Painel profissional</small></div></div><h1>Carregando...</h1><p>Restaurando sua sessão e a tela em que você estava.</p></div></div>
   }
+  if (state === 'unavailable') return <SessionUnavailable professional onRetry={() => setAttempt(value => value + 1)} />
 
   return <App initialView={state === 'authenticated' ? 'admin' : 'admin-login'} />
 }
 
 function PatientRouteGate() {
-  const [state, setState] = useState<'checking' | 'authenticated' | 'anonymous'>('checking')
+  const [state, setState] = useState<GateState>('checking')
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    let active = true
+    setState('checking')
     fetch('/api/me', { credentials: 'include', cache: 'no-store' })
-      .then(response => setState(response.ok ? 'authenticated' : 'anonymous'))
-      .catch(() => setState('anonymous'))
-  }, [])
+      .then(response => {
+        if (!active) return
+        if (response.ok) setState('authenticated')
+        else if (response.status === 401) setState('anonymous')
+        else setState('unavailable')
+      })
+      .catch(() => { if (active) setState('unavailable') })
+    return () => { active = false }
+  }, [attempt])
 
   if (state === 'checking') return <div className="patient-session-check" aria-hidden="true" />
+  if (state === 'unavailable') return <SessionUnavailable onRetry={() => setAttempt(value => value + 1)} />
 
   if (state === 'anonymous') {
     if (window.location.pathname === '/paciente' || window.location.pathname === '/paciente/') {
