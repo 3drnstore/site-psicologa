@@ -47,7 +47,7 @@ async function enhancePatient(){
   summary.dataset.pricingV2='1'
   let copy=summary.querySelector<HTMLElement>('.pricing-v2-copy')
   if(!copy){copy=document.createElement('div');copy.className='pricing-v2-copy';summary.prepend(copy)}
-  copy.innerHTML=`<p>Sessão online com duração de 50 minutos. O agendamento será confirmado após a confirmação do pagamento. O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão — Pix: ${money(pix)} — Cartão: ${money(card)}.</p>`
+  copy.innerHTML=`<p>Sessão online com duração de 50 minutos. O agendamento será confirmado após a confirmação do pagamento. O pagamento deverá ser realizado na próxima etapa.</p><p class="pricing-v2-values">Valor da sessão: Pix: ${money(pix)} - Cartão: ${money(card)}</p>`
   const actions=summary.querySelector('.payment-actions')
   const buttons=actions?.querySelectorAll<HTMLButtonElement>('button')
   if(buttons&&buttons.length>=2){
