@@ -44,6 +44,7 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
 
     const existing=await env.DB.prepare(`SELECT * FROM payments WHERE appointment_id=? AND provider='mercadopago' AND status='pending' AND external_id IS NOT NULL ORDER BY id DESC LIMIT 1`).bind(appointmentId).first<any>()
     if(existing&&(existing.pix_qr_code||existing.pix_copy_paste||existing.checkout_url)){
+      await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(ap.availability_id).run()
       return json({ok:true,payment_id:Number(existing.id),provider:'mercadopago',pix_qr_code:existing.pix_qr_code,pix_copy_paste:existing.pix_copy_paste,checkout_url:existing.checkout_url,amount_cents:Number(existing.amount_cents),test_mode:String(env.MERCADOPAGO_TEST_MODE||'').toLowerCase()==='true'})
     }
 
@@ -54,7 +55,10 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
     const amount=(chargedAmount/100).toFixed(2)
     const holdMinutes=Math.max(30,Number(await setting(env,'hold_minutes','30'))||30)
 
-    await env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method='pix',payment_provider='mercadopago',reserved_until=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(chargedAmount,plusMinutes(holdMinutes),appointmentId).run()
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method='pix',payment_provider='mercadopago',reserved_until=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(chargedAmount,plusMinutes(holdMinutes),appointmentId),
+      env.DB.prepare(`UPDATE availability SET status='held',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(ap.availability_id),
+    ])
 
     const inserted=await env.DB.prepare(`INSERT INTO payments (appointment_id,provider,method,status,amount_cents,raw_status) VALUES (?,'mercadopago','pix','pending',?,'creating')`).bind(appointmentId,chargedAmount).run()
     const paymentId=Number(inserted.meta.last_row_id)
