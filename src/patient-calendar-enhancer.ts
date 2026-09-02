@@ -1,16 +1,23 @@
 const dayLabel=(value:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date(value))
-const monthYear=(value:string)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(value)).replace(/^./,c=>c.toUpperCase())
 const dayNumber=(value:string)=>new Intl.DateTimeFormat('pt-BR',{day:'numeric'}).format(new Date(value))
 const weekday=(value:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(new Date(value)).replace(/^./,c=>c.toUpperCase())
 const timeOnly=(value:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(value))
 const addDays=(value:Date,n:number)=>{const d=new Date(value);d.setDate(d.getDate()+n);return d}
 const mondayOf=(value:Date)=>{const d=new Date(value.getFullYear(),value.getMonth(),value.getDate());const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));d.setHours(0,0,0,0);return d}
+const monthName=(value:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'long'}).format(value).replace(/^./,c=>c.toUpperCase())
 
 let running=false
 let scheduled:number|undefined
 let weekCursor:Date|null=null
 
 function isoDateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
+
+function weekMonthLabel(start:Date,end:Date){
+  const sameMonth=start.getMonth()===end.getMonth()&&start.getFullYear()===end.getFullYear()
+  if(sameMonth)return `${monthName(start)} de ${start.getFullYear()}`
+  if(start.getFullYear()===end.getFullYear())return `${monthName(start)}/${monthName(end)} de ${start.getFullYear()}`
+  return `${monthName(start)} de ${start.getFullYear()}/${monthName(end)} de ${end.getFullYear()}`
+}
 
 async function enhance(){
   if(running)return
@@ -49,16 +56,23 @@ async function enhance(){
         if(!slot)return
         const status=slot.public_status||'occupied'
         button.dataset.publicStatus=status
-        let label=button.querySelector<HTMLElement>('span')
+        let label=button.querySelector<HTMLElement>('[data-patient-status]')
+        if(!label){
+          const existing=button.querySelector<HTMLElement>('span')
+          label=existing||document.createElement('span')
+          label.dataset.patientStatus='1'
+          if(!existing)button.appendChild(label)
+        }
         if(status==='blocked'){
-          if(!label){label=document.createElement('span');button.appendChild(label)}
           label.textContent='Bloqueado'
           button.classList.add('blocked')
         }else if(status==='occupied'){
-          if(!label){label=document.createElement('span');button.appendChild(label)}
           label.textContent='Ocupado'
           button.classList.remove('blocked')
-        }else button.classList.remove('blocked')
+        }else{
+          label.textContent='Disponível'
+          button.classList.remove('blocked')
+        }
       })
     })
 
@@ -77,7 +91,7 @@ async function enhance(){
       })
       const toolbar=document.querySelector<HTMLElement>('.patient-calendar-toolbar')
       const period=toolbar?.querySelector<HTMLElement>('.patient-calendar-period')
-      if(period)period.innerHTML=`<strong>${monthYear(start.toISOString())}</strong><span>${dayNumber(start.toISOString())} a ${dayNumber(end.toISOString())}</span>`
+      if(period)period.innerHTML=`<strong>${weekMonthLabel(start,end)}</strong><span>${dayNumber(start.toISOString())} a ${dayNumber(end.toISOString())}</span>`
       localStorage.setItem('patientCalendarWeek',isoDateOnly(start))
     }
 
@@ -87,7 +101,7 @@ async function enhance(){
       if(saved){const parsed=new Date(`${saved}T12:00:00`);if(!Number.isNaN(parsed.getTime()))weekCursor=mondayOf(parsed)}
       toolbar=document.createElement('div')
       toolbar.className='patient-calendar-toolbar'
-      toolbar.innerHTML=`<button type="button" class="patient-week-arrow" data-week="prev" aria-label="Semana anterior">‹</button><div class="patient-calendar-period"></div><button type="button" class="patient-week-arrow" data-week="next" aria-label="Próxima semana">›</button>`
+      toolbar.innerHTML=`<button type="button" class="patient-calendar-nav" data-week="prev" aria-label="Semana anterior">‹</button><div class="patient-calendar-period"></div><button type="button" class="patient-calendar-nav" data-week="next" aria-label="Próxima semana">›</button>`
       list.before(toolbar)
       toolbar.querySelector('[data-week="prev"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),-7);applyWeek()})
       toolbar.querySelector('[data-week="next"]')?.addEventListener('click',()=>{weekCursor=addDays(weekCursor||new Date(),7);applyWeek()})
