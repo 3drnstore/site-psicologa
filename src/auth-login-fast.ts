@@ -18,6 +18,27 @@ async function safeGuard(request:Request,env:Env,email:string){
   }
 }
 
+async function adminFromSession(request:Request,env:Env){
+  await ensureAdminAuthSchema(env)
+  const token=readCookie(request,ADMIN_COOKIE)
+  if(!token)return null
+  const tokenHash=await sha256(token)
+  const session=await env.DB.prepare(`SELECT id,admin_user_id,admin_email,admin_display_name,admin_role,expires_at FROM admin_sessions WHERE token_hash=? AND expires_at>?`).bind(tokenHash,now()).first<any>()
+  if(!session)return null
+
+  if(session.admin_email&&session.admin_display_name&&session.admin_role){
+    return {id:String(session.admin_user_id),email:String(session.admin_email),display_name:String(session.admin_display_name),role:String(session.admin_role),session_id:String(session.id)}
+  }
+
+  const user=await env.DB.prepare('SELECT id,email,display_name,role,active FROM admin_users WHERE id=?').bind(String(session.admin_user_id)).first<any>()
+  if(!user||Number(user.active)!==1){
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE id=?').bind(String(session.id)).run().catch(()=>{})
+    return null
+  }
+  await env.DB.prepare('UPDATE admin_sessions SET admin_email=?,admin_display_name=?,admin_role=? WHERE id=?').bind(String(user.email),String(user.display_name),String(user.role),String(session.id)).run().catch(()=>{})
+  return {id:String(user.id),email:String(user.email),display_name:String(user.display_name),role:String(user.role),session_id:String(session.id)}
+}
+
 export async function handleAuthLoginFast(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path==='/api/admin/security-config'&&request.method==='GET')return json({ok:true,...adminSecurityConfig(env)})
 
@@ -60,7 +81,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
 
       if(guard.accountKey)try{await clearAdminAccountFailures(env,guard.accountKey)}catch(error){console.error('Admin guard clear:',error instanceof Error?error.message:String(error))}
       const token=randomToken()
-      await env.DB.prepare('INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(),String(a.id),await sha256(token),expires()).run()
+      await env.DB.prepare(`INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at,admin_email,admin_display_name,admin_role) VALUES (?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),String(a.id),await sha256(token),expires(),String(a.email),String(a.display_name),String(a.role)).run()
       await auditAdminLogin(env,String(a.id))
       return json({ok:true,admin:{id:a.id,email:a.email,display_name:a.display_name,role:a.role}},200,{'set-cookie':cookie(ADMIN_COOKIE,token,SESSION_SECONDS)})
     }catch(error){
@@ -78,11 +99,8 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
 
   if(path==='/api/admin/me'&&request.method==='GET'){
     try{
-      await ensureAdminAuthSchema(env)
-      const token=readCookie(request,ADMIN_COOKIE)
-      if(!token)return json({ok:false,message:'Acesso profissional necessário.'},401)
-      const a=await env.DB.prepare('SELECT a.id,a.email,a.display_name,a.role FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1').bind(await sha256(token),now()).first<any>()
-      return a?json({ok:true,admin:a}):json({ok:false,message:'Sessão expirada.'},401)
+      const a=await adminFromSession(request,env)
+      return a?json({ok:true,admin:{id:a.id,email:a.email,display_name:a.display_name,role:a.role}}):json({ok:false,message:'Sessão expirada.'},401)
     }catch(error){
       console.error('Admin session validation fatal:',error instanceof Error?error.message:String(error))
       return json({ok:false,message:'O acesso profissional está temporariamente indisponível.',diagnostic_code:'ADMIN_SESSION_RUNTIME'},503)
