@@ -1,4 +1,5 @@
 import { readCookie, sha256 } from './auth'
+import { ensurePlatformPricing } from './platform-pricing'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
@@ -15,6 +16,7 @@ export async function handleAdminPatientsV2(request:Request,env:Env,path:string)
   if(path!=='/api/admin/patients'&& !/^\/api\/admin\/patients\/\d+$/.test(path))return null
   const a=await admin(request,env)
   if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
+  await ensurePlatformPricing(env)
 
   if(path==='/api/admin/patients'&&request.method==='GET'){
     try{
