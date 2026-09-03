@@ -4,14 +4,22 @@ import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
+async function adminIsConfigured(env: Env) {
+  const table = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'admin_users'"
+  ).first<any>()
+  if (Number(table?.count || 0) === 0) return false
+
+  const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
+  return Number(row?.count || 0) > 0
+}
+
 export async function handleAdminSetup(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url)
 
   if (url.pathname === '/api/admin/setup-status' && request.method === 'GET') {
     try {
-      await ensureSchema(env)
-      const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
-      return json({ ok: true, configured: Number(row?.count || 0) > 0 })
+      return json({ ok: true, configured: await adminIsConfigured(env) })
     } catch (error) {
       console.error('Admin setup status error:', error instanceof Error ? error.message : String(error))
       return json({ ok: false, message: 'Não foi possível verificar a configuração administrativa agora.' }, 503)
@@ -20,12 +28,12 @@ export async function handleAdminSetup(request: Request, env: Env): Promise<Resp
 
   if (url.pathname === '/api/admin/setup' && request.method === 'POST') {
     try {
-      await ensureSchema(env)
-      const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM admin_users').first<any>()
-      if (Number(count?.count || 0) > 0) return json({ ok: false, message: 'O administrador inicial já foi configurado.' }, 409)
+      if (await adminIsConfigured(env)) return json({ ok: false, message: 'O administrador inicial já foi configurado.' }, 409)
       if (!env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'A configuração administrativa ainda não foi habilitada no servidor.' }, 503)
       const supplied = request.headers.get('x-setup-token') || ''
       if (supplied !== env.ADMIN_SETUP_TOKEN) return json({ ok: false, message: 'Chave de configuração inválida.' }, 403)
+
+      await ensureSchema(env)
 
       const data = await request.json().catch(() => ({})) as any
       const displayName = String(data.display_name || '').trim()
