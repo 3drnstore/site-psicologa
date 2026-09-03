@@ -10,6 +10,7 @@ import { api } from './api-client'
 import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
+import { installAdminSecurityEnhancer } from './admin-security-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installPatientWelcomeEnhancer } from './patient-welcome-enhancer'
@@ -140,6 +141,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
+installAdminSecurityEnhancer()
 installPatientCalendarEnhancer()
 installPatientPortalEnhancer()
 installPatientWelcomeEnhancer()
