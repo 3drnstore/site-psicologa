@@ -1,30 +1,15 @@
 import './admin-messages.css'
 
-let installed=false
 type ContactMessage={id:number;name:string;email:string;phone:string;message:string;status:string;created_at:string}
-
-const GENERIC_MESSAGES=new Set([
-  'Não foi possível concluir a solicitação.',
-  'Nao foi possível concluir a solicitação.',
-  'Não foi possivel concluir a solicitação.',
-  'Nao foi possivel concluir a solicitacao.',
-])
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
 const dateTime=(value:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))
 
-function cleanGenericPatientMessage(){
-  if(!document.querySelector('.patient-page'))return
-  document.querySelectorAll<HTMLElement>('.patient-page .info-box').forEach(box=>{
-    const text=(box.textContent||'').trim()
-    if(GENERIC_MESSAGES.has(text))box.style.setProperty('display','none','important')
-    else if(box.style.display==='none')box.style.removeProperty('display')
-  })
-}
+async function getMessages(){const r=await fetch('/api/admin/messages',{credentials:'include',cache:'no-store'});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível carregar as mensagens.');return (d.messages||[]) as ContactMessage[]}
+async function setMessageStatus(id:number,status:'new'|'read'){const r=await fetch(`/api/admin/messages/${id}`,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({status})});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível atualizar a mensagem.')}
 
-function cleanupAdminViews(){
-  const title=(document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()
-  const host=document.querySelector<HTMLElement>('.admin-custom-view')
-  if(!host)return
+function topTitle(){return (document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()}
+function cleanupCustomViews(){
+  const title=topTitle();const host=document.querySelector<HTMLElement>('.admin-custom-view');if(!host)return
   if(title==='Consultas'||title==='Pagamentos'){
     host.querySelector('.admin-dashboard-actions')?.remove()
     host.querySelector('.admin-section-title')?.remove()
@@ -32,14 +17,12 @@ function cleanupAdminViews(){
   if(title==='Pagamentos')host.querySelectorAll<HTMLElement>('.admin-table-row:not(.header)').forEach(row=>row.children[1]?.querySelector('small')?.remove())
 }
 
-async function getMessages(){const r=await fetch('/api/contact?admin=1',{credentials:'include',cache:'no-store'});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível carregar as mensagens.');return (d.messages||[]) as ContactMessage[]}
-async function setMessageStatus(id:number,status:'new'|'read'){const r=await fetch('/api/contact?admin=1',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({admin_action:'status',id,status})});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível atualizar a mensagem.')}
-function setHeader(){const h=document.querySelector<HTMLElement>('.admin-topbar h1'),k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent='Mensagens';if(k)k.textContent='Gestão profissional'}
+function setHeader(title:string){const h=document.querySelector<HTMLElement>('.admin-topbar h1');const k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent=title;if(k)k.textContent='Gestão profissional'}
 function setActive(button:HTMLButtonElement){document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button').forEach(b=>b.classList.toggle('active',b===button))}
 
 async function renderMessages(button:HTMLButtonElement){
   const main=document.querySelector<HTMLElement>('.admin-main');if(!main)return
-  main.classList.add('admin-custom-mode');main.querySelector('.admin-custom-view')?.remove();setActive(button);setHeader();localStorage.setItem('psicogestao.admin.view','mensagens')
+  main.classList.add('admin-custom-mode');main.querySelector('.admin-custom-view')?.remove();setActive(button);setHeader('Mensagens');localStorage.setItem('psicogestao.admin.view','mensagens')
   const host=document.createElement('div');host.className='admin-custom-view admin-messages-view';host.innerHTML='<div class="admin-dashboard-empty">Carregando mensagens...</div>';main.appendChild(host)
   try{
     const messages=await getMessages(),unread=messages.filter(m=>m.status==='new').length
@@ -49,22 +32,14 @@ async function renderMessages(button:HTMLButtonElement){
 }
 
 function bindMessages(){
-  const button=[...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')].find(b=>(b.textContent||'').trim()==='Mensagens')
-  if(!button)return
+  const button=[...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')].find(b=>(b.textContent||'').trim()==='Mensagens');if(!button)return false
   button.disabled=false
-  if(button.dataset.messagesBound)return
-  button.dataset.messagesBound='1'
-  button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();void renderMessages(button)},true)
+  if(!button.dataset.messagesBound){button.dataset.messagesBound='1';button.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();void renderMessages(button)},true)}
+  return true
 }
 
-function apply(){cleanGenericPatientMessage();cleanupAdminViews();bindMessages()}
-function scheduleBurst(){;[0,80,200,500].forEach(delay=>window.setTimeout(apply,delay))}
-
-export function installPatientMessageEnhancer(){
-  if(installed)return
-  installed=true
-  scheduleBurst()
-  document.addEventListener('click',()=>{window.setTimeout(apply,0);window.setTimeout(apply,180)},true)
-  window.addEventListener('pageshow',scheduleBurst)
+export function installAdminMessagesEnhancer(){
+  const apply=()=>{bindMessages();cleanupCustomViews()}
+  ;[0,100,300,700].forEach(ms=>setTimeout(apply,ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>apply()).observe(root,{childList:true,subtree:true})
 }
