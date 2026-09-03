@@ -25,3 +25,4 @@
 .admin-page .admin-topbar{border-color:#dfe8f2!important}
 .admin-page .admin-welcome{background:#fff!important;border-color:#d8e4f1!important;color:#5c7390!important}
 .admin-page .admin-dashboard-actions{display:none!important}
+.admin-page .settings-panel:has(.pricing-v2-admin)>h2:first-child{display:none!important}

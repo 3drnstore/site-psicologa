@@ -21,6 +21,46 @@ function cleanupCustomViews(){
 
 function setHeader(title:string){const h=document.querySelector<HTMLElement>('.admin-topbar h1');const k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent=title;if(k)k.textContent='Gestão profissional'}
 function setActive(button:HTMLButtonElement){document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button').forEach(b=>b.classList.toggle('active',b===button))}
+function menuLabelForTitle(title:string){
+  if(title==='Visão geral'||title==='Painel')return 'Painel'
+  if(title==='Agenda')return 'Agenda'
+  if(title==='Consultas')return 'Consultas'
+  if(title==='Financeiro'||title==='Pagamentos')return 'Financeiro'
+  if(title==='Pacientes e prontuários'||title==='Pacientes')return 'Pacientes'
+  if(title==='Mensagens')return 'Mensagens'
+  if(title==='Configurações'||title==='Segurança'||title==='Gestão de usuários')return 'Configurações'
+  return ''
+}
+function normalizeSidebarActive(){
+  const buttons=[...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')]
+  if(!buttons.length)return
+  const wanted=menuLabelForTitle(topTitle())
+  if(!wanted)return
+  const target=buttons.find(button=>{const label=(button.textContent||'').trim();return label===wanted||(wanted==='Financeiro'&&label==='Pagamentos')})
+  if(target)setActive(target)
+}
+function bindSingleActiveNavigation(){
+  const sidebar=document.querySelector<HTMLElement>('.admin-sidebar');if(!sidebar||sidebar.dataset.singleActiveBound)return
+  sidebar.dataset.singleActiveBound='1'
+  sidebar.addEventListener('click',event=>{
+    const target=(event.target as HTMLElement|null)?.closest<HTMLButtonElement>('nav button');if(!target)return
+    ;[0,40,140,300].forEach(ms=>window.setTimeout(()=>{
+      const label=(target.textContent||'').trim()
+      if(label==='Mensagens')setActive(target)
+      else normalizeSidebarActive()
+    },ms))
+  },true)
+}
+let initialPanelApplied=false
+function forceInitialPanel(){
+  if(initialPanelApplied)return
+  const sidebar=document.querySelector<HTMLElement>('.admin-sidebar');if(!sidebar)return
+  const painel=[...sidebar.querySelectorAll<HTMLButtonElement>('nav button')].find(button=>(button.textContent||'').trim()==='Painel');if(!painel)return
+  initialPanelApplied=true
+  localStorage.setItem('psicogestao.admin.view','dashboard')
+  painel.click()
+  ;[0,80,220].forEach(ms=>window.setTimeout(normalizeSidebarActive,ms))
+}
 
 async function renderMessages(button:HTMLButtonElement){
   const main=document.querySelector<HTMLElement>('.admin-main');if(!main)return
@@ -42,7 +82,8 @@ function bindMessages(){
 
 export function installAdminMessagesEnhancer(){
   installAdminConsultationsV2();installAdminClinicalExport();installAdminFinanceEnhancer()
-  const apply=()=>{bindMessages();cleanupCustomViews()}
+  const apply=()=>{bindMessages();bindSingleActiveNavigation();cleanupCustomViews();normalizeSidebarActive()}
   ;[0,100,300,700].forEach(ms=>setTimeout(apply,ms))
+  ;[170,350].forEach(ms=>setTimeout(forceInitialPanel,ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>apply()).observe(root,{childList:true,subtree:true})
 }
