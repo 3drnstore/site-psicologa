@@ -5,6 +5,7 @@ export type PricingOrigin='particular'|'platform_1'|'platform_2'
 const ORIGINS:PricingOrigin[]=['particular','platform_1','platform_2']
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}})
 const now=()=>new Date().toISOString()
+let schemaReady=false
 
 async function setting(env:Env,key:string,fallback=''){
   const row=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(key).first<any>()
@@ -18,7 +19,17 @@ async function admin(request:Request,env:Env){
   return env.DB.prepare(`SELECT a.id,a.role FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),now()).first<any>()
 }
 
+async function ensureOriginColumn(env:Env){
+  if(schemaReady)return
+  const info=await env.DB.prepare('PRAGMA table_info(patients)').all<any>()
+  const exists=(info.results||[]).some((row:any)=>row.name==='pricing_origin')
+  if(!exists)await env.DB.prepare(`ALTER TABLE patients ADD COLUMN pricing_origin TEXT DEFAULT 'particular'`).run()
+  await env.DB.prepare(`UPDATE patients SET pricing_origin='particular' WHERE pricing_origin IS NULL OR pricing_origin=''`).run()
+  schemaReady=true
+}
+
 export async function ensurePlatformPricing(env:Env){
+  await ensureOriginColumn(env)
   const defaults:[string,string][]=[['platform_1_name','Plataforma 1'],['platform_1_price_cents','3000'],['platform_2_name','Plataforma 2'],['platform_2_price_cents','6000']]
   for(const [key,value] of defaults)await env.DB.prepare('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)').bind(key,value).run()
   for(const origin of ['platform_1','platform_2'] as const){
@@ -35,6 +46,7 @@ export async function originFromInvite(env:Env,token:string):Promise<PricingOrig
 }
 
 export async function pricingForOrigin(env:Env,origin:string|undefined|null,method:'pix'|'card'='card'){
+  await ensurePlatformPricing(env)
   const normalized=ORIGINS.includes(origin as PricingOrigin)?origin as PricingOrigin:'particular'
   if(normalized==='platform_1'||normalized==='platform_2'){
     const name=await setting(env,`${normalized}_name`,normalized==='platform_1'?'Plataforma 1':'Plataforma 2')
@@ -65,6 +77,7 @@ export async function handlePlatformPricing(request:Request,env:Env,path:string)
   if(!isTables&&!regen&&!patientOrigin)return null
   const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
   if(a.role!=='psychologist')return json({ok:false,message:'Esta ação exige acesso de Psicóloga / Administrador.'},403)
+  await ensurePlatformPricing(env)
 
   if(isTables&&request.method==='GET')return json({ok:true,tables:await tableData(request,env)})
   if(isTables&&request.method==='PUT'){
