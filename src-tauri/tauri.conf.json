@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
     "shortDescription": "PsicoGestão para Windows",
     "longDescription": "Aplicativo desktop do PsicoGestão para acesso ao painel e aos recursos do sistema no Windows."
   }
