@@ -49,6 +49,7 @@ import './accessibility-safe.css'
 import './app-resilience.css'
 import './status-page.css'
 import './privacy-page.css'
+import './admin-blue-theme.css'
 
 const path = window.location.pathname
 
