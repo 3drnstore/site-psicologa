@@ -12,6 +12,7 @@ import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installAdminSecurityEnhancer } from './admin-security-enhancer'
 import { installAdminSessionSecurityEnhancer } from './admin-session-security-enhancer'
+import { installAdmin2faEnhancer } from './admin-2fa-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installPatientWelcomeEnhancer } from './patient-welcome-enhancer'
@@ -54,109 +55,26 @@ const path = window.location.pathname
 type GateState = 'checking' | 'authenticated' | 'anonymous' | 'unavailable'
 
 function SessionUnavailable({ professional = false, onRetry }: { professional?: boolean; onRetry: () => void }) {
-  return <div className="auth-page">
-    <div className="auth-card">
-      <div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>{professional ? 'PsicoGestão' : 'Jacqueline Siqueira'}</strong><small>{professional ? 'Painel profissional' : 'Área do paciente'}</small></div></div>
-      <span className="section-kicker">Conexão temporariamente indisponível</span>
-      <h1>Não foi possível validar sua sessão agora.</h1>
-      <p>Sua sessão não foi encerrada. Aguarde alguns instantes e tente novamente.</p>
-      <button className="primary-button full" type="button" onClick={onRetry}>Tentar novamente</button>
-      <button className="text-button full" type="button" onClick={() => window.location.href='/status'}>Ver status do sistema</button>
-    </div>
-  </div>
+  return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>{professional ? 'PsicoGestão' : 'Jacqueline Siqueira'}</strong><small>{professional ? 'Painel profissional' : 'Área do paciente'}</small></div></div><span className="section-kicker">Conexão temporariamente indisponível</span><h1>Não foi possível validar sua sessão agora.</h1><p>Sua sessão não foi encerrada. Aguarde alguns instantes e tente novamente.</p><button className="primary-button full" type="button" onClick={onRetry}>Tentar novamente</button><button className="text-button full" type="button" onClick={() => window.location.href='/status'}>Ver status do sistema</button></div></div>
 }
-
-function errorStatus(error: unknown) {
-  return (error as Error & { status?: number })?.status
-}
-
+function errorStatus(error: unknown) { return (error as Error & { status?: number })?.status }
 function AdminRouteGate() {
-  const [state, setState] = useState<GateState>('checking')
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    let active = true
-    setState('checking')
-    api.adminMe()
-      .then(() => { if (active) setState('authenticated') })
-      .catch(error => {
-        if (!active) return
-        setState(errorStatus(error) === 401 ? 'anonymous' : 'unavailable')
-      })
-    return () => { active = false }
-  }, [attempt])
-
-  if (state === 'checking') {
-    return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>PsicoGestão</strong><small>Painel profissional</small></div></div><h1>Carregando...</h1><p>Restaurando sua sessão e a tela em que você estava.</p></div></div>
-  }
-  if (state === 'unavailable') return <SessionUnavailable professional onRetry={() => setAttempt(value => value + 1)} />
-
-  return <App initialView={state === 'authenticated' ? 'admin' : 'admin-login'} />
+  const [state,setState]=useState<GateState>('checking');const[attempt,setAttempt]=useState(0)
+  useEffect(()=>{let active=true;setState('checking');api.adminMe().then(()=>{if(active)setState('authenticated')}).catch(error=>{if(!active)return;setState(errorStatus(error)===401?'anonymous':'unavailable')});return()=>{active=false}},[attempt])
+  if(state==='checking')return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>PsicoGestão</strong><small>Painel profissional</small></div></div><h1>Carregando...</h1><p>Restaurando sua sessão e a tela em que você estava.</p></div></div>
+  if(state==='unavailable')return <SessionUnavailable professional onRetry={()=>setAttempt(v=>v+1)}/>
+  return <App initialView={state==='authenticated'?'admin':'admin-login'}/>
 }
-
 function PatientRouteGate() {
-  const [state, setState] = useState<GateState>('checking')
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    let active = true
-    setState('checking')
-    api.me()
-      .then(() => { if (active) setState('authenticated') })
-      .catch(error => {
-        if (!active) return
-        setState(errorStatus(error) === 401 ? 'anonymous' : 'unavailable')
-      })
-    return () => { active = false }
-  }, [attempt])
-
-  if (state === 'checking') return <div className="patient-session-check" aria-hidden="true" />
-  if (state === 'unavailable') return <SessionUnavailable onRetry={() => setAttempt(value => value + 1)} />
-
-  if (state === 'anonymous') {
-    if (window.location.pathname === '/paciente' || window.location.pathname === '/paciente/') {
-      window.history.replaceState({}, '', '/')
-    }
-    return <App />
-  }
-
-  return <App initialView="paciente" />
+  const [state,setState]=useState<GateState>('checking');const[attempt,setAttempt]=useState(0)
+  useEffect(()=>{let active=true;setState('checking');api.me().then(()=>{if(active)setState('authenticated')}).catch(error=>{if(!active)return;setState(errorStatus(error)===401?'anonymous':'unavailable')});return()=>{active=false}},[attempt])
+  if(state==='checking')return <div className="patient-session-check" aria-hidden="true" />
+  if(state==='unavailable')return <SessionUnavailable onRetry={()=>setAttempt(v=>v+1)}/>
+  if(state==='anonymous'){if(window.location.pathname==='/paciente'||window.location.pathname==='/paciente/')window.history.replaceState({},'','/');return <App/>}
+  return <App initialView="paciente"/>
 }
+function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>;if(path==='/privacidade'||path==='/privacidade/')return <PrivacyPage/>;if(path==='/admin/setup')return <AdminSetup/>;if(path==='/recuperar-senha')return <PasswordRecovery/>;if(path==='/admin'||path==='/admin/')return <AdminRouteGate/>;if(path==='/paciente'||path==='/paciente/')return <PatientRouteGate/>;return <App/>}
 
-function RoutedApp() {
-  if (path === '/status' || path === '/status/') return <StatusPage />
-  if (path === '/privacidade' || path === '/privacidade/') return <PrivacyPage />
-  if (path === '/admin/setup') return <AdminSetup />
-  if (path === '/recuperar-senha') return <PasswordRecovery />
-  if (path === '/admin' || path === '/admin/') return <AdminRouteGate />
-  if (path === '/paciente' || path === '/paciente/') return <PatientRouteGate />
-  return <App />
-}
-
-installD1FetchCache()
-installAppResilience()
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><AppErrorBoundary><RoutedApp /></AppErrorBoundary></React.StrictMode>,
-)
-installPasswordEnhancer()
-installAdminCalendarEnhancer()
-installAdminStateEnhancer()
-installAdminSecurityEnhancer()
-installAdminSessionSecurityEnhancer()
-installPatientCalendarEnhancer()
-installPatientPortalEnhancer()
-installPatientWelcomeEnhancer()
-installPatientPaymentEnhancer()
-installPatientPaymentStabilizer()
-installAdminAppointmentEnhancer()
-installPricingUiEnhancer()
-installPatientMessageEnhancer()
-installPatientSelectionEnhancer()
-installPatientConsultationsEnhancer()
-installProfessionalPresentationEnhancer()
-installContactSectionEnhancer()
-installHomepageCtaSafe()
-installAccessibilitySafe()
-installPrivacyLinksSafe()
-installPatientRouteSync()
+installD1FetchCache();installAppResilience()
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installPatientMessageEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
