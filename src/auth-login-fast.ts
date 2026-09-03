@@ -1,7 +1,6 @@
 import { cookie, randomToken, readCookie, sha256, verifyPassword } from './auth'
 import { verifyTotp } from './totp'
 import { adminSecurityConfig, checkAdminLoginGuard, clearAdminAccountFailures, recordAdminLoginFailure, verifyTurnstile } from './admin-login-protection'
-import { ensureAdminAuthSchema } from './admin-auth-schema'
 import { readAdminSession } from './admin-session-reader'
 import type { Env } from './types'
 
@@ -35,7 +34,6 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
 
   if(path==='/api/admin/login'&&request.method==='POST'){
     try{
-      await ensureAdminAuthSchema(env)
       const b=await body(request),email=String(b.email||'').trim().toLowerCase(),password=String(b.password||'')
       const guard=await safeGuard(request,env,email)
       if(!guard.allowed)return json({ok:false,message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.'},429)
@@ -61,7 +59,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
 
       if(guard.accountKey)try{await clearAdminAccountFailures(env,guard.accountKey)}catch(error){console.error('Admin guard clear:',error instanceof Error?error.message:String(error))}
       const token=randomToken()
-      await env.DB.prepare(`INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at,admin_email,admin_display_name,admin_role) VALUES (?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),String(a.id),await sha256(token),expires(),String(a.email),String(a.display_name),String(a.role)).run()
+      await env.DB.prepare('INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(),String(a.id),await sha256(token),expires()).run()
       await auditAdminLogin(env,String(a.id))
       return json({ok:true,admin:{id:a.id,email:a.email,display_name:a.display_name,role:a.role}},200,{'set-cookie':cookie(ADMIN_COOKIE,token,SESSION_SECONDS)})
     }catch(error){
