@@ -1,7 +1,8 @@
 import './admin-2fa.css'
 
-const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]||c))
 async function request(path:string,init?:RequestInit){const r=await fetch(path,{credentials:'include',headers:{'content-type':'application/json',...(init?.headers||{})},...init});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível concluir.');return d}
+let mountingPanel=false
 
 function injectLoginField(){
   if(location.pathname!=='/admin'&&location.pathname!=='/admin/')return
@@ -14,8 +15,16 @@ function injectLoginField(){
 function statusMarkup(enabled:boolean){return `<section class="admin-2fa-card" data-admin-2fa-card><div><span class="section-kicker">Proteção adicional</span><h3>Autenticação em dois fatores</h3><p>Use um aplicativo autenticador para gerar um código de 6 dígitos além da sua senha.</p></div><div class="admin-2fa-status ${enabled?'on':'off'}"><strong>${enabled?'Ativada':'Desativada'}</strong><span>${enabled?'Sua conta exige senha + código 2FA no login.':'Ative para proteger ainda mais o acesso profissional.'}</span></div><div data-admin-2fa-actions>${enabled?'<button type="button" class="secondary-button danger" data-disable-2fa>Desativar 2FA</button>':'<button type="button" class="admin-primary" data-setup-2fa>Ativar 2FA</button>'}</div></section>`}
 
 async function mountPanel(){
-  const security=document.querySelector<HTMLElement>('.admin-security-panel');if(!security||security.querySelector('[data-admin-2fa-card]'))return
-  try{const state=await request('/api/admin/security/2fa');const wrap=document.createElement('div');wrap.innerHTML=statusMarkup(Boolean(state.enabled));const card=wrap.firstElementChild as HTMLElement;security.querySelector('.admin-security-heading')?.after(card);bindCard(card)}catch{}
+  const security=document.querySelector<HTMLElement>('.admin-security-panel');if(!security)return
+  const existing=[...security.querySelectorAll<HTMLElement>('[data-admin-2fa-card]')]
+  if(existing.length>1)existing.slice(1).forEach(card=>card.remove())
+  if(existing.length||mountingPanel)return
+  mountingPanel=true
+  try{
+    const state=await request('/api/admin/security/2fa')
+    if(!security.isConnected||security.querySelector('[data-admin-2fa-card]'))return
+    const wrap=document.createElement('div');wrap.innerHTML=statusMarkup(Boolean(state.enabled));const card=wrap.firstElementChild as HTMLElement;security.querySelector('.admin-security-heading')?.after(card);bindCard(card)
+  }catch{}finally{mountingPanel=false}
 }
 function message(card:HTMLElement,text:string,error=false){let n=card.querySelector<HTMLElement>('.admin-2fa-notice');if(!n){n=document.createElement('div');n.className='admin-2fa-notice';card.appendChild(n)}n.className=`admin-2fa-notice ${error?'error':'success'}`;n.textContent=text}
 function bindCard(card:HTMLElement){
