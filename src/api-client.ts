@@ -18,65 +18,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const PATIENT_CACHE_KEY = 'ps_recent_patient'
 const ADMIN_CACHE_KEY = 'ps_recent_admin'
 
-function writeSessionCache(key: string, value: unknown) {
-  try { sessionStorage.setItem(key, JSON.stringify(value)) } catch {}
-}
-
-function readSessionCache<T>(key: string): T | null {
-  try {
-    const raw = sessionStorage.getItem(key)
-    return raw ? JSON.parse(raw) as T : null
-  } catch { return null }
-}
-
-function clearSessionCache(key: string) {
-  try { sessionStorage.removeItem(key) } catch {}
-}
+function writeSessionCache(key: string, value: unknown) { try { sessionStorage.setItem(key, JSON.stringify(value)) } catch {} }
+function readSessionCache<T>(key: string): T | null { try { const raw=sessionStorage.getItem(key); return raw ? JSON.parse(raw) as T : null } catch { return null } }
+function clearSessionCache(key: string) { try { sessionStorage.removeItem(key) } catch {} }
 
 async function loginPatient(email: string, password: string) {
   const result = await request<any>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
   if (result?.patient) writeSessionCache(PATIENT_CACHE_KEY, result.patient)
   return result
 }
-
 async function currentPatient() {
-  try {
-    const result = await request<any>('/api/me', { cache: 'no-store' })
-    if (result?.patient) writeSessionCache(PATIENT_CACHE_KEY, result.patient)
-    return result
-  } catch (error) {
-    const status = (error as Error & { status?: number }).status
-    if (status === 401) {
-      clearSessionCache(PATIENT_CACHE_KEY)
-      throw error
-    }
-    const patient = readSessionCache<any>(PATIENT_CACHE_KEY)
-    if (patient) return { ok: true, patient, degraded: true }
-    throw error
-  }
+  try { const result=await request<any>('/api/me',{cache:'no-store'}); if(result?.patient)writeSessionCache(PATIENT_CACHE_KEY,result.patient); return result }
+  catch(error){const status=(error as Error&{status?:number}).status;if(status===401){clearSessionCache(PATIENT_CACHE_KEY);throw error}const patient=readSessionCache<any>(PATIENT_CACHE_KEY);if(patient)return{ok:true,patient,degraded:true};throw error}
 }
-
 async function loginAdmin(email: string, password: string) {
-  const result = await request<any>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+  const totpCode=(document.querySelector<HTMLInputElement>('input[name="totp_code"]')?.value||'').trim()
+  const result = await request<any>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password, totp_code: totpCode }) })
   if (result?.admin) writeSessionCache(ADMIN_CACHE_KEY, result.admin)
   return result
 }
-
 async function currentAdmin() {
-  try {
-    const result = await request<any>('/api/admin/me', { cache: 'no-store' })
-    if (result?.admin) writeSessionCache(ADMIN_CACHE_KEY, result.admin)
-    return result
-  } catch (error) {
-    const status = (error as Error & { status?: number }).status
-    if (status === 401) {
-      clearSessionCache(ADMIN_CACHE_KEY)
-      throw error
-    }
-    const admin = readSessionCache<any>(ADMIN_CACHE_KEY)
-    if (admin) return { ok: true, admin, degraded: true }
-    throw error
-  }
+  try { const result=await request<any>('/api/admin/me',{cache:'no-store'}); if(result?.admin)writeSessionCache(ADMIN_CACHE_KEY,result.admin); return result }
+  catch(error){const status=(error as Error&{status?:number}).status;if(status===401){clearSessionCache(ADMIN_CACHE_KEY);throw error}const admin=readSessionCache<any>(ADMIN_CACHE_KEY);if(admin)return{ok:true,admin,degraded:true};throw error}
 }
 
 export const api = {
@@ -101,9 +64,7 @@ export const api = {
   adminAppointments: () => request<any>('/api/admin/appointments').catch(() => ({ ok: true, appointments: [] })),
   setAppointmentStatus: (id: string | number, status: 'confirmed' | 'cancelled', reason?: string) => request(`/api/admin/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }),
   createSlot: (payload: { starts_at: string; ends_at: string }) => request('/api/admin/availability', { method: 'POST', body: JSON.stringify(payload) }),
-  adminAvailability: (from?: string, to?: string) => (!from&&!to)
-    ? Promise.resolve({ ok: true, slots: [], recurring_blocks: [] })
-    : request<any>(`/api/admin/availability-v2?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`).catch(() => ({ ok: true, slots: [], recurring_blocks: [] })),
+  adminAvailability: (from?: string, to?: string) => (!from&&!to) ? Promise.resolve({ ok: true, slots: [], recurring_blocks: [] }) : request<any>(`/api/admin/availability-v2?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`).catch(() => ({ ok: true, slots: [], recurring_blocks: [] })),
   setSlotMode: (slotId: string | number, mode: 'free' | 'blocked' | 'hidden' | 'visible') => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}/mode`, { method: 'PATCH', body: JSON.stringify({ mode }) }),
   deleteSlot: (slotId: string | number) => request(`/api/admin/availability/${encodeURIComponent(String(slotId))}`, { method: 'DELETE' }),
   createRecurringBlock: (payload: { weekdays: number[]; start_time: string; end_time: string; date_from?: string; date_to?: string; label?: string }) => request<any>('/api/admin/recurring-blocks', { method: 'POST', body: JSON.stringify(payload) }),
