@@ -5,8 +5,9 @@ type BulkMode='free'|'occupied'|'blocked'
 const fmtTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
 const mondayOf=(d:Date)=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDay();x.setDate(x.getDate()-(day===0?6:day-1));return x}
-const statusLabel=(s?:Slot)=>!s?'Ocupado':s.status==='confirmed'?'Consulta confirmada':s.status==='held'?'Reserva':s.status==='blocked'?'Bloqueado':s.status==='occupied'?'Ocupado':s.public_visibility==='hidden'?'Oculto':'Horário Livre'
-const statusClass=(s?:Slot)=>!s?'unset':s.status==='confirmed'?'confirmed':s.status==='held'?'held':s.status==='blocked'?'blocked':s.status==='occupied'?'occupied':s.public_visibility==='hidden'?'hidden':'free'
+const effectiveStatus=(s?:Slot)=>s?.appointment_status||s?.status
+const statusLabel=(s?:Slot)=>!s?'Ocupado':effectiveStatus(s)==='confirmed'?'Consulta confirmada':effectiveStatus(s)==='pending_payment'||effectiveStatus(s)==='held'?'Reserva':s.status==='blocked'?'Bloqueado':s.status==='occupied'?'Ocupado':s.public_visibility==='hidden'?'Oculto':'Horário Livre'
+const statusClass=(s?:Slot)=>!s?'unset':effectiveStatus(s)==='confirmed'?'confirmed':effectiveStatus(s)==='pending_payment'||effectiveStatus(s)==='held'?'held':s.status==='blocked'?'blocked':s.status==='occupied'?'occupied':s.public_visibility==='hidden'?'hidden':'free'
 const monthYear=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(d).replace(/^./,c=>c.toUpperCase())
 const shortWeekday=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(d).replace(/^./,c=>c.toUpperCase())
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[c]||c))
@@ -110,8 +111,8 @@ class AdminCalendar {
   nav(weeks:number){this.cursor=addDays(this.cursor,weeks*7);this.selected.clear();this.anchorKey=null;void this.load()}
 
   slotBody(s?:Slot){
-    if(s&&(s.status==='confirmed'||s.status==='held')&&s.full_name){
-      return `<span class="gc-patient-name gc-patient-link" data-patient-contact="${esc(String(s.id))}">${esc(s.full_name)}</span><span class="gc-patient-status">${s.status==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
+    if(s&&['confirmed','pending_payment','held'].includes(String(effectiveStatus(s)))&&s.full_name){
+      return `<span class="gc-patient-name gc-patient-link" data-patient-contact="${esc(String(s.id))}">${esc(s.full_name)}</span><span class="gc-patient-status">${effectiveStatus(s)==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
     }
     return `<span>${statusLabel(s)}</span>`
   }
@@ -169,7 +170,7 @@ class AdminCalendar {
             <div class="agenda-day-cards">
               ${cells.map(c=>{
                 const selected=this.selected.has(this.key(c))
-                const hasAppointment=Boolean(c.slot?.appointment_id&&(c.slot.status==='confirmed'||c.slot.status==='held'))
+                const hasAppointment=Boolean(c.slot?.appointment_id&&['confirmed','pending_payment','held'].includes(String(effectiveStatus(c.slot))))
                 return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''}" data-cell="${this.key(c)}">
                   <strong class="agenda-slot-time">${fmtTime(c.starts_at)} - ${fmtTime(c.ends_at)}</strong>
                   ${this.slotBody(c.slot)}
