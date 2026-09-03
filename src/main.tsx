@@ -20,6 +20,8 @@ import { installPatientPaymentEnhancer } from './patient-payment-enhancer'
 import { installPatientPaymentStabilizer } from './patient-payment-stabilizer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
+import { installAdminPlatformPricingEnhancer } from './admin-platform-pricing-enhancer'
+import { installPlatformInviteEnhancer } from './platform-invite-enhancer'
 import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import { installAdminMessagesEnhancer } from './admin-messages-enhancer'
 import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
@@ -76,6 +78,6 @@ function PatientRouteGate() {
 }
 function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>;if(path==='/privacidade'||path==='/privacidade/')return <PrivacyPage/>;if(path==='/admin/setup')return <AdminSetup/>;if(path==='/recuperar-senha')return <PasswordRecovery/>;if(path==='/admin'||path==='/admin/')return <AdminRouteGate/>;if(path==='/paciente'||path==='/paciente/')return <PatientRouteGate/>;return <App/>}
 
-installD1FetchCache();installAppResilience()
+installD1FetchCache();installAppResilience();installPlatformInviteEnhancer()
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
