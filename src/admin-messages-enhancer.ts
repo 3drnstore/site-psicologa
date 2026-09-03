@@ -1,4 +1,5 @@
 import './admin-messages.css'
+import './admin-blue-final.css'
 
 type ContactMessage={id:number;name:string;email:string;phone:string;message:string;status:string;created_at:string}
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
@@ -10,10 +11,8 @@ async function setMessageStatus(id:number,status:'new'|'read'){const r=await fet
 function topTitle(){return (document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()}
 function cleanupCustomViews(){
   const title=topTitle();const host=document.querySelector<HTMLElement>('.admin-custom-view');if(!host)return
-  if(title==='Consultas'||title==='Pagamentos'){
-    host.querySelector('.admin-dashboard-actions')?.remove()
-    host.querySelector('.admin-section-title')?.remove()
-  }
+  if(title==='Visão geral'||title==='Consultas'||title==='Pagamentos')host.querySelector('.admin-dashboard-actions')?.remove()
+  if(title==='Consultas'||title==='Pagamentos')host.querySelector('.admin-section-title')?.remove()
   if(title==='Pagamentos')host.querySelectorAll<HTMLElement>('.admin-table-row:not(.header)').forEach(row=>row.children[1]?.querySelector('small')?.remove())
 }
 
