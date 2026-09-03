@@ -1,4 +1,5 @@
 import './admin-desktop.css'
+import { renderAdminConsultations, type AdminConsultation } from './admin-consultations-v2'
 
 const STORAGE_KEY = 'psicogestao.admin.view'
 
@@ -107,15 +108,6 @@ function dashboardMarkup(appointments:Appointment[],patients:Patient[]){
     </section>`
 }
 
-function consultationsMarkup(appointments:Appointment[]){
-  const ordered=[...appointments].sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
-  return `${quickActions()}<div class="admin-section-title"><div><h2>Consultas</h2><p>Histórico de atendimentos, reservas e cancelamentos.</p></div><span>${appointments.length} registro(s)</span></div>
-    <section class="admin-table-card">
-      <div class="admin-table-row header"><span>Paciente</span><span>Data e horário</span><span>Status</span><span>Valor</span></div>
-      ${ordered.length?ordered.map(a=>`<div class="admin-table-row"><div><strong>${esc(a.full_name)}</strong><small>${esc(a.email)}</small></div><div><strong>${esc(dateTime(a.starts_at))}</strong><small>até ${esc(timeOnly(a.ends_at))}</small></div><div><span class="admin-status-chip ${statusClass(a.status)}">${esc(statusLabel(a.status))}</span></div><div><strong>${esc(money(a.amount_cents))}</strong><small>${esc(paymentMethod(a))}</small></div></div>`).join(''):`<div style="padding:18px">${empty('Nenhuma consulta registrada.')}</div>`}
-    </section>`
-}
-
 function paymentsMarkup(appointments:Appointment[]){
   const now=new Date()
   const paid=appointments.filter(a=>a.status==='confirmed'&&a.paid_at)
@@ -159,7 +151,8 @@ async function renderCustom(view:'dashboard'|'consultas'|'pagamentos',sidebar:HT
     const appointments=(appointmentData.appointments||[]) as Appointment[]
     const patients=(patientData.patients||[]) as Patient[]
     if(!host.isConnected)return
-    host.innerHTML=view==='dashboard'?dashboardMarkup(appointments,patients):view==='consultas'?consultationsMarkup(appointments):paymentsMarkup(appointments)
+    if(view==='consultas')renderAdminConsultations(host,appointments as AdminConsultation[])
+    else host.innerHTML=view==='dashboard'?dashboardMarkup(appointments,patients):paymentsMarkup(appointments)
     host.querySelectorAll<HTMLButtonElement>('[data-admin-open]').forEach(button=>button.addEventListener('click',()=>{
       const target=buttonByLabel(sidebar,String(button.dataset.adminOpen||''))
       target?.click()
