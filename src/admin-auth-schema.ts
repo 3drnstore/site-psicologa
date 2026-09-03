@@ -35,6 +35,9 @@ export async function ensureAdminAuthSchema(env: Env) {
       admin_user_id TEXT NOT NULL,
       token_hash TEXT NOT NULL UNIQUE,
       expires_at TEXT NOT NULL,
+      admin_email TEXT,
+      admin_display_name TEXT,
+      admin_role TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `)
@@ -54,6 +57,9 @@ export async function ensureAdminAuthSchema(env: Env) {
   await addMissingColumn(env, 'admin_sessions', sessionColumns, 'admin_user_id', 'TEXT')
   await addMissingColumn(env, 'admin_sessions', sessionColumns, 'token_hash', 'TEXT')
   await addMissingColumn(env, 'admin_sessions', sessionColumns, 'expires_at', 'TEXT')
+  await addMissingColumn(env, 'admin_sessions', sessionColumns, 'admin_email', 'TEXT')
+  await addMissingColumn(env, 'admin_sessions', sessionColumns, 'admin_display_name', 'TEXT')
+  await addMissingColumn(env, 'admin_sessions', sessionColumns, 'admin_role', 'TEXT')
   await addMissingColumn(env, 'admin_sessions', sessionColumns, 'created_at', 'TEXT')
 
   ready = true
@@ -65,7 +71,7 @@ export async function adminAuthSchemaStatus(env: Env) {
     const users = await tableColumns(env, 'admin_users')
     const sessions = await tableColumns(env, 'admin_sessions')
     const requiredUsers = ['id','email','password_hash','password_salt','display_name','role','active','totp_secret','totp_enabled']
-    const requiredSessions = ['id','admin_user_id','token_hash','expires_at']
+    const requiredSessions = ['id','admin_user_id','token_hash','expires_at','admin_email','admin_display_name','admin_role']
     const valid = requiredUsers.every((c) => users.has(c)) && requiredSessions.every((c) => sessions.has(c))
     return valid ? 'online' : 'invalid_schema'
   } catch (error) {
