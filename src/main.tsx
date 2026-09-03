@@ -21,6 +21,7 @@ import { installPatientPaymentStabilizer } from './patient-payment-stabilizer'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installPatientMessageEnhancer } from './patient-message-enhancer'
+import { installAdminMessagesEnhancer } from './admin-messages-enhancer'
 import { installPatientSelectionEnhancer } from './patient-selection-enhancer'
 import { installPatientConsultationsEnhancer } from './patient-consultations-enhancer'
 import { installD1FetchCache } from './d1-fetch-cache'
@@ -77,4 +78,4 @@ function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>
 
 installD1FetchCache();installAppResilience()
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installPatientMessageEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
