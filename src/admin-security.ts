@@ -2,15 +2,20 @@ import { clearCookie, hashPassword, readCookie, sha256, verifyPassword } from '.
 import type { Env } from './types'
 
 const ADMIN_COOKIE='ps_admin_session'
-const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8',...headers}})
+const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}})
 const now=()=>new Date().toISOString()
 
 async function body(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 
+async function audit(env:Env,actorId:string,action:string,entityType:string,entityId?:string|null,metadata?:unknown){
+  await env.DB.prepare(`INSERT INTO audit_log (id,actor_type,actor_id,action,entity_type,entity_id,metadata_json) VALUES (?,'admin',?,?,?,?,?)`)
+    .bind(crypto.randomUUID(),actorId,action,entityType,entityId||null,metadata?JSON.stringify(metadata):null).run()
+}
+
 async function currentAdmin(request:Request,env:Env){
   const token=readCookie(request,ADMIN_COOKIE)
   if(!token)return null
-  return env.DB.prepare(`SELECT a.id,a.email,a.display_name,a.role,a.active
+  return env.DB.prepare(`SELECT a.id,a.email,a.display_name,a.role,a.active,s.id AS session_id,s.token_hash
     FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id
     WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`)
     .bind(await sha256(token),now()).first<any>()
@@ -46,9 +51,41 @@ export async function guardAdminRole(request:Request,env:Env,path:string):Promis
 }
 
 export async function handleAdminSecurity(request:Request,env:Env,path:string):Promise<Response|null>{
-  const isSecurity=path==='/api/admin/security/email'||path==='/api/admin/security/password'
+  const isSecurity=path.startsWith('/api/admin/security/')
   const isUsers=path==='/api/admin/users'||/^\/api\/admin\/users\/[^/]+$/.test(path)
   if(!isSecurity&&!isUsers)return null
+
+  if(path==='/api/admin/security/sessions'&&request.method==='GET'){
+    const state=await requireAdmin(request,env);if(state.error)return state.error
+    const result=await env.DB.prepare(`SELECT id,created_at,expires_at FROM admin_sessions WHERE admin_user_id=? AND expires_at>? ORDER BY created_at DESC`).bind(state.admin.id,now()).all<any>()
+    const sessions=(result.results||[]).map((row:any)=>({...row,current:row.id===state.admin.session_id}))
+    return json({ok:true,sessions,current_session_id:state.admin.session_id})
+  }
+
+  const sessionMatch=path.match(/^\/api\/admin\/security\/sessions\/([^/]+)$/)
+  if(sessionMatch&&request.method==='DELETE'){
+    const state=await requireAdmin(request,env);if(state.error)return state.error
+    const id=decodeURIComponent(sessionMatch[1])
+    if(id===state.admin.session_id)return json({ok:false,message:'A sessão atual deve ser encerrada pelo botão Sair.'},409)
+    const existing=await env.DB.prepare('SELECT id FROM admin_sessions WHERE id=? AND admin_user_id=?').bind(id,state.admin.id).first<any>()
+    if(!existing)return json({ok:false,message:'Sessão não encontrada ou já encerrada.'},404)
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE id=? AND admin_user_id=?').bind(id,state.admin.id).run()
+    await audit(env,state.admin.id,'admin_session_revoked','admin_session',id)
+    return json({ok:true,message:'Sessão encerrada.'})
+  }
+
+  if(path==='/api/admin/security/sessions/others'&&request.method==='DELETE'){
+    const state=await requireAdmin(request,env);if(state.error)return state.error
+    const result=await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=? AND id<>?').bind(state.admin.id,state.admin.session_id).run()
+    await audit(env,state.admin.id,'admin_other_sessions_revoked','admin_session',null,{count:Number(result.meta.changes||0)})
+    return json({ok:true,message:'Outras sessões encerradas.',count:Number(result.meta.changes||0)})
+  }
+
+  if(path==='/api/admin/security/activity'&&request.method==='GET'){
+    const state=await requireAdmin(request,env);if(state.error)return state.error
+    const result=await env.DB.prepare(`SELECT id,action,entity_type,entity_id,metadata_json,created_at FROM audit_log WHERE actor_type='admin' AND actor_id=? ORDER BY created_at DESC LIMIT 50`).bind(state.admin.id).all<any>()
+    return json({ok:true,events:result.results||[]})
+  }
 
   if(path==='/api/admin/security/email'&&request.method==='PATCH'){
     const state=await requireAdmin(request,env);if(state.error)return state.error
@@ -58,7 +95,9 @@ export async function handleAdminSecurity(request:Request,env:Env,path:string):P
     if(!creds||!(await verifyPassword(currentPassword,creds.password_salt,creds.password_hash)))return json({ok:false,message:'Senha atual incorreta.'},401)
     const exists=await env.DB.prepare('SELECT id FROM admin_users WHERE email=? AND id<>?').bind(email,state.admin.id).first<any>()
     if(exists)return json({ok:false,message:'Este e-mail já está em uso por outro acesso.'},409)
+    const previous=state.admin.email
     await env.DB.prepare('UPDATE admin_users SET email=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(email,state.admin.id).run()
+    await audit(env,state.admin.id,'admin_email_changed','admin_user',state.admin.id,{from:previous,to:email})
     return json({ok:true,message:'E-mail de acesso atualizado.',email})
   }
 
@@ -69,6 +108,7 @@ export async function handleAdminSecurity(request:Request,env:Env,path:string):P
     const creds=await credentials(env,state.admin.id)
     if(!creds||!(await verifyPassword(currentPassword,creds.password_salt,creds.password_hash)))return json({ok:false,message:'Senha atual incorreta.'},401)
     const pwd=await hashPassword(newPassword)
+    await audit(env,state.admin.id,'admin_password_changed','admin_user',state.admin.id)
     await env.DB.prepare('UPDATE admin_users SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(pwd.hash,pwd.salt,state.admin.id).run()
     await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=?').bind(state.admin.id).run()
     return json({ok:true,message:'Senha alterada. Entre novamente com a nova senha.'},200,{'set-cookie':clearCookie(ADMIN_COOKIE)})
@@ -89,6 +129,7 @@ export async function handleAdminSecurity(request:Request,env:Env,path:string):P
     if(exists)return json({ok:false,message:'Já existe um acesso com este e-mail.'},409)
     const pwd=await hashPassword(password),id=crypto.randomUUID()
     await env.DB.prepare(`INSERT INTO admin_users (id,email,password_hash,password_salt,display_name,role,active) VALUES (?,?,?,?,?,?,1)`).bind(id,email,pwd.hash,pwd.salt,displayName,role).run()
+    await audit(env,state.admin.id,'admin_user_created','admin_user',id,{role,email})
     return json({ok:true,message:'Novo acesso cadastrado.',user:{id,email,display_name:displayName,role,active:1}},201)
   }
 
@@ -109,6 +150,7 @@ export async function handleAdminSecurity(request:Request,env:Env,path:string):P
     }
     await env.DB.prepare('UPDATE admin_users SET display_name=?,role=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(nextName,nextRole,nextActive,id).run()
     if(nextActive!==1)await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=?').bind(id).run()
+    await audit(env,state.admin.id,'admin_user_updated','admin_user',id,{role:nextRole,active:nextActive,display_name:nextName})
     return json({ok:true,message:'Acesso atualizado.'})
   }
 
