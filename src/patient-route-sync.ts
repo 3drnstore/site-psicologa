@@ -1,5 +1,13 @@
 let installed=false
 
+function cleanupPatientShell(){
+  document.querySelector('.patient-sidebar[data-safe-portal="1"]')?.remove()
+  document.querySelector('.patient-external-view[data-safe-portal="1"]')?.remove()
+  document.querySelector('.patient-mobile-menu-button')?.remove()
+  document.querySelector('.patient-menu-backdrop[data-safe-portal="1"]')?.remove()
+  document.documentElement.classList.remove('patient-menu-open')
+}
+
 function syncPatientRoute(){
   const patient=document.querySelector('.patient-page')
   const publicSite=document.querySelector('.site-shell')
@@ -10,8 +18,9 @@ function syncPatientRoute(){
     return
   }
 
-  if(publicSite&&(path==='/paciente'||path==='/paciente/')){
-    window.history.replaceState({},'','/')
+  if(publicSite){
+    cleanupPatientShell()
+    if(path==='/paciente'||path==='/paciente/')window.history.replaceState({},'','/')
   }
 }
 
