@@ -1,4 +1,5 @@
 import { clearCookie, cookie, hashPassword, randomToken, readCookie, sha256, verifyPassword } from './auth'
+import { originFromInvite } from './platform-pricing'
 import type { Env } from './types'
 
 const ADMIN_COOKIE='ps_admin_session', PATIENT_COOKIE='ps_session', SESSION_SECONDS=60*60*24*14
@@ -19,7 +20,7 @@ async function createPatientSession(env:Env,patientId:number){
 async function patientFromRequest(request:Request,env:Env){
   const token=readCookie(request,PATIENT_COOKIE)
   if(!token)return null
-  return env.DB.prepare(`SELECT p.id,p.full_name,p.birth_date,p.cpf,p.phone,p.email,p.email_verified
+  return env.DB.prepare(`SELECT p.id,p.full_name,p.birth_date,p.cpf,p.phone,p.email,p.email_verified,p.pricing_origin
     FROM sessions s JOIN patients p ON p.id=s.patient_id
     WHERE s.token_hash=? AND s.expires_at>?`)
     .bind(await sha256(token),now()).first<any>()
@@ -42,10 +43,10 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
   if(path==='/api/auth/login' && request.method==='POST'){
     try{
       const b=await data(request), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
-      const patient=await env.DB.prepare('SELECT id,full_name,email,password_hash,password_salt FROM patients WHERE email=?').bind(email).first<any>()
+      const patient=await env.DB.prepare('SELECT id,full_name,email,pricing_origin,password_hash,password_salt FROM patients WHERE email=?').bind(email).first<any>()
       if(!patient?.password_hash||!patient?.password_salt||!(await verifyPassword(password,patient.password_salt,patient.password_hash)))return json({ok:false,message:'E-mail ou senha inválidos.'},401)
       const token=await createPatientSession(env,Number(patient.id))
-      return json({ok:true,patient:{id:patient.id,full_name:patient.full_name,email:patient.email}},200,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
+      return json({ok:true,patient:{id:patient.id,full_name:patient.full_name,email:patient.email,pricing_origin:patient.pricing_origin||'particular'}},200,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
     }catch(error){
       const detail=error instanceof Error?error.message:String(error)
       console.error('Patient login error:',detail)
@@ -61,14 +62,16 @@ export async function handleAuthV2(request:Request,env:Env,path:string):Promise<
   if(path==='/api/auth/register' && request.method==='POST'){
     try{
       const b=await data(request)
-      const fullName=String(b.full_name||'').trim(), birthDate=String(b.birth_date||'').trim(), cpf=digits(String(b.cpf||'')), phone=digits(String(b.phone||'')), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'')
+      const fullName=String(b.full_name||'').trim(), birthDate=String(b.birth_date||'').trim(), cpf=digits(String(b.cpf||'')), phone=digits(String(b.phone||'')), email=String(b.email||'').trim().toLowerCase(), password=String(b.password||''), inviteToken=String(b.invite_token||'').trim()
       if(!fullName||!birthDate||cpf.length!==11||phone.length<10||!email.includes('@')||password.length<8)return json({ok:false,message:'Preencha corretamente todos os campos. A senha deve ter pelo menos 8 caracteres.'},400)
       const existing=await env.DB.prepare('SELECT id,email,cpf FROM patients WHERE email=? OR cpf=?').bind(email,cpf).first<any>()
       if(existing)return json({ok:false,message:'Já existe um cadastro com este e-mail ou CPF.'},409)
+      let pricingOrigin:'particular'|'platform_1'|'platform_2'='particular'
+      if(inviteToken){const invited=await originFromInvite(env,inviteToken);if(!invited)return json({ok:false,message:'Este link de cadastro não é mais válido. Solicite um novo link à profissional.'},400);pricingOrigin=invited}
       const pwd=await hashPassword(password)
-      const result=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,password_hash,password_salt) VALUES (?,?,?,?,?,?,?)`).bind(fullName,birthDate,cpf,phone,email,pwd.hash,pwd.salt).run()
+      const result=await env.DB.prepare(`INSERT INTO patients (full_name,birth_date,cpf,phone,email,password_hash,password_salt,pricing_origin) VALUES (?,?,?,?,?,?,?,?)`).bind(fullName,birthDate,cpf,phone,email,pwd.hash,pwd.salt,pricingOrigin).run()
       const patientId=Number(result.meta.last_row_id), token=await createPatientSession(env,patientId)
-      return json({ok:true,patient:{id:patientId,full_name:fullName,email}},201,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
+      return json({ok:true,patient:{id:patientId,full_name:fullName,email,pricing_origin:pricingOrigin}},201,{'set-cookie':cookie(PATIENT_COOKIE,token,SESSION_SECONDS)})
     }catch(error){const detail=error instanceof Error?error.message:String(error);console.error('Patient register error:',detail);return json({ok:false,message:'Não foi possível criar o cadastro do paciente agora.'},503)}
   }
 
