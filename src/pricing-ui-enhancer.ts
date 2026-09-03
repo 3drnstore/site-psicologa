@@ -13,8 +13,15 @@ function ensureStyle(){
   .booking-summary[data-pricing-v2] .pricing-v2-copy{display:grid;gap:4px;flex:1 1 520px;color:#3f5750;font-size:14px;line-height:1.55;font-weight:500}
   .booking-summary[data-pricing-v2] .pricing-v2-copy p{margin:0;display:block}
   .booking-summary[data-pricing-v2] .pricing-v2-copy .pricing-v2-values{color:#294b44;font-weight:700;margin-top:3px}
-  .pricing-v2-admin{display:grid;gap:18px}.pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pricing-v2-admin label{display:grid;gap:7px;font-weight:700}.pricing-v2-admin input{width:100%;border:1px solid #d6dfda;border-radius:11px;padding:12px 13px;background:#fff;font:inherit}.pricing-v2-note{padding:12px 14px;border-radius:10px;background:#f4f7f5;color:#5f6e68;font-size:13px;line-height:1.5}.pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#edf6f0;color:#245a45}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}.pricing-v2-title{margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-size:26px;color:#173f38}
-  @media(max-width:700px){.pricing-v2-admin .pricing-grid{grid-template-columns:1fr}.booking-summary[data-pricing-v2] .pricing-v2-copy{flex-basis:100%;text-align:left}}
+  .pricing-v2-admin{display:grid;gap:18px}
+  .pricing-v2-admin .pricing-v2-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}
+  .pricing-v2-admin .pricing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .pricing-v2-admin label{display:grid;gap:7px;font-weight:700}
+  .pricing-v2-admin input{width:100%;border:1px solid #cddbec;border-radius:11px;padding:12px 13px;background:#fff;font:inherit;color:#344f70}
+  .pricing-v2-msg{padding:10px 12px;border-radius:9px;background:#eef4fb;color:#3f638d}.pricing-v2-msg.error{background:#fff1ef;color:#9b3d31}
+  .pricing-v2-title{margin:0;font:inherit;font-size:30px;line-height:1.15;font-weight:700;color:var(--admin-text,#395575)}
+  .pricing-v2-caption{display:inline-flex;align-items:center;padding:5px 8px;background:#f5f8fc;color:#6f86a5;font-size:11px;line-height:1.2;white-space:nowrap}
+  @media(max-width:700px){.pricing-v2-admin .pricing-grid{grid-template-columns:1fr}.booking-summary[data-pricing-v2] .pricing-v2-copy{flex-basis:100%;text-align:left}.pricing-v2-admin .pricing-v2-heading{align-items:flex-start;flex-direction:column;gap:8px}.pricing-v2-title{font-size:26px}.pricing-v2-caption{white-space:normal}}
   `;document.head.appendChild(style)
 }
 
@@ -47,7 +54,7 @@ async function enhanceAdmin(){
   const pix=Number(s.pix_price_cents??legacy)
   const card=Number(s.card_price_cents??legacy)
   const form=document.createElement('form');form.className='pricing-v2-admin'
-  form.innerHTML=`<div><h2 class="pricing-v2-title">Atendimento e cobrança</h2><div class="pricing-v2-note">Defina separadamente os valores cobrados conforme a forma de pagamento. Eles serão apresentados ao paciente de forma informativa no fluxo de agendamento, sem linguagem promocional.</div></div><div class="pricing-grid"><label>Valor Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(pix/100).toFixed(2)}"></label><label>Valor Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(card/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
+  form.innerHTML=`<div class="pricing-v2-heading"><h2 class="pricing-v2-title">Atendimento Particular</h2><span class="pricing-v2-caption">Tabela padrão do consultório</span></div><div class="pricing-grid"><label>Valor Pix (R$)<input name="pix" type="number" min="0" step="0.01" required value="${(pix/100).toFixed(2)}"></label><label>Valor Cartão (R$)<input name="card" type="number" min="0" step="0.01" required value="${(card/100).toFixed(2)}"></label><label>Duração padrão (minutos)<input name="duration" type="number" min="10" value="${Number(s.appointment_duration_minutes||50)}"></label><label>Tempo de reserva aguardando pagamento (minutos)<input name="hold" type="number" min="5" value="${Number(s.hold_minutes||15)}"></label></div><button class="admin-primary" type="submit">Salvar configurações</button>`
   panel.appendChild(form)
   form.addEventListener('submit',async e=>{
     e.preventDefault();const fd=new FormData(form),btn=form.querySelector<HTMLButtonElement>('button')!;btn.disabled=true
