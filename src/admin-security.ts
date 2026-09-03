@@ -1,5 +1,6 @@
-import { clearCookie, hashPassword, readCookie, sha256, verifyPassword } from './auth'
+import { clearCookie, hashPassword, verifyPassword } from './auth'
 import { newTotpSecret, totpUri, verifyTotp } from './totp'
+import { readAdminSession } from './admin-session-reader'
 import type { Env } from './types'
 
 const ADMIN_COOKIE='ps_admin_session'
@@ -7,7 +8,11 @@ const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.s
 const now=()=>new Date().toISOString()
 async function body(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 async function audit(env:Env,actorId:string,action:string,entityType:string,entityId?:string|null,metadata?:unknown){await env.DB.prepare(`INSERT INTO audit_log (id,actor_type,actor_id,action,entity_type,entity_id,metadata_json) VALUES (?,'admin',?,?,?,?,?)`).bind(crypto.randomUUID(),actorId,action,entityType,entityId||null,metadata?JSON.stringify(metadata):null).run()}
-async function currentAdmin(request:Request,env:Env){const token=readCookie(request,ADMIN_COOKIE);if(!token)return null;return env.DB.prepare(`SELECT a.id,a.email,a.display_name,a.role,a.active,s.id AS session_id FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),now()).first<any>()}
+async function currentAdmin(request:Request,env:Env){
+  const identity=await readAdminSession(request,env)
+  if(!identity)return null
+  return {id:identity.id,email:identity.email,display_name:identity.display_name,role:identity.role,active:1,session_id:identity.session_id}
+}
 async function credentials(env:Env,id:string){return env.DB.prepare('SELECT id,password_hash,password_salt FROM admin_users WHERE id=?').bind(id).first<any>()}
 async function requireAdmin(request:Request,env:Env){const admin=await currentAdmin(request,env);if(!admin)return {error:json({ok:false,message:'Acesso profissional necessário.'},401),admin:null};return {error:null,admin}}
 async function requirePsychologist(request:Request,env:Env){const state=await requireAdmin(request,env);if(state.error)return state;if(state.admin.role!=='psychologist')return {error:json({ok:false,message:'Esta ação exige acesso de Psicóloga / Administrador.'},403),admin:state.admin};return state}
