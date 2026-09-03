@@ -12,6 +12,13 @@ const expires=()=>new Date(Date.now()+SESSION_SECONDS*1000).toISOString()
 
 async function body(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 
+async function auditAdminLogin(env:Env,adminId:string){
+  try{
+    await env.DB.prepare(`INSERT INTO audit_log (id,actor_type,actor_id,action,entity_type,entity_id,metadata_json) VALUES (?,'admin',?,'admin_login','admin_session',NULL,NULL)`)
+      .bind(crypto.randomUUID(),adminId).run()
+  }catch(error){console.error('Admin login audit error:',error instanceof Error?error.message:String(error))}
+}
+
 export async function handleAuthLoginFast(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path==='/api/admin/security-config'&&request.method==='GET')return json({ok:true,...adminSecurityConfig(env)})
 
@@ -51,6 +58,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       await clearAdminAccountFailures(env,guard.accountKey!)
       const token=randomToken(),tokenHash=await sha256(token)
       await env.DB.prepare('INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(),String(admin.id),tokenHash,expires()).run()
+      await auditAdminLogin(env,String(admin.id))
       return json({ok:true,admin:{id:admin.id,email:admin.email,display_name:admin.display_name,role:admin.role}},200,{'set-cookie':cookie(ADMIN_COOKIE,token,SESSION_SECONDS)})
     }catch(error){
       const detail=error instanceof Error?error.message:String(error)
