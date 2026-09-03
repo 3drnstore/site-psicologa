@@ -1,9 +1,6 @@
 .admin-config-submenu{display:grid;gap:5px;margin:-2px 8px 8px 28px;padding-left:10px;border-left:1px solid #cfdced}
 .admin-config-submenu[hidden]{display:none!important}
-.admin-config-submenu button{width:100%;border:0!important;border-radius:9px!important;background:transparent!important;color:#60758f!important;padding:9px 11px!important;text-align:left!important;font:inherit!important;font-size:13px!important;font-weight:700!important;box-shadow:none!important}
-.admin-config-submenu button:hover{background:#f7faff!important;color:#315f9f!important}
-.admin-config-submenu button.active{background:#dce9f8!important;color:#315f9f!important;box-shadow:none!important}
-.admin-security-panel.config-users-history-only{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
-.admin-security-panel.config-users-history-only .admin-session-security{margin:0!important}
-.admin-security-panel.config-users-history-only .admin-security-subpanel{margin:0!important}
+.admin-config-submenu a{display:block;width:100%;box-sizing:border-box;border:0;border-radius:9px;background:transparent;color:#60758f;padding:9px 11px;text-align:left;font:inherit;font-size:13px;font-weight:700;text-decoration:none;box-shadow:none}
+.admin-config-submenu a:hover{background:#f7faff;color:#315f9f}
+.admin-config-submenu a.active{background:#dce9f8;color:#315f9f}
 @media(max-width:760px){.admin-config-submenu{margin-left:16px;margin-right:4px}}
