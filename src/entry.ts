@@ -13,6 +13,7 @@ import { handlePublicAvailabilityV3 } from './public-availability-v3'
 import { handlePatientReserveV2 } from './patient-reserve-v2'
 import { handleAdminPatientsV2 } from './admin-patients-v2'
 import { handlePricingV2 } from './pricing-v2'
+import { handleAdminSecurity, guardAdminRole } from './admin-security'
 import { handleContactApi } from './contact-api'
 import { checkRateLimit } from './rate-limit'
 import { handleHealthApi } from './health-api'
@@ -86,6 +87,12 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
   const authV2 = await handleAuthV2(request, env, path)
   if (authV2) return authV2
+
+  const adminSecurity = await handleAdminSecurity(request, env, path)
+  if (adminSecurity) return adminSecurity
+
+  const roleBlocked = await guardAdminRole(request, env, path)
+  if (roleBlocked) return roleBlocked
 
   if (path === '/api/admin/patients' || /^\/api\/admin\/patients\/\d+$/.test(path)) {
     const response = await handleAdminPatientsV2(request, env, path)
