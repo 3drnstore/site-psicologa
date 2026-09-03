@@ -41,7 +41,7 @@ function wrap(text:string,width=92){const src=String(text||'').split(/\r?\n/),ou
 function concat(parts:Uint8Array[]){const total=parts.reduce((n,p)=>n+p.length,0),out=new Uint8Array(total);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
 function ascii(value:string){return enc.encode(value)}
 export function clinicalPdfBytes(patient:ClinicalExportPatient,note:ClinicalExportNote){
-  const lines=clinicalLines(patient,note).flatMap(line=>wrap(line)),perPage=48,pages:Array.from({length:Math.max(1,Math.ceil(lines.length/perPage))},(_,i)=>lines.slice(i*perPage,(i+1)*perPage))
+  const lines=clinicalLines(patient,note).flatMap(line=>wrap(line)),perPage=48,pages=Array.from({length:Math.max(1,Math.ceil(lines.length/perPage))},(_,i)=>lines.slice(i*perPage,(i+1)*perPage))
   const fontId=3+pages.length*2,objects:Uint8Array[]=[]
   objects[1]=ascii('<< /Type /Catalog /Pages 2 0 R >>')
   const kids=pages.map((_,i)=>`${3+i*2} 0 R`).join(' ');objects[2]=ascii(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`)
