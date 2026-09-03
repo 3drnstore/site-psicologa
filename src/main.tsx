@@ -13,6 +13,7 @@ import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installAdminSecurityEnhancer } from './admin-security-enhancer'
 import { installAdminSessionSecurityEnhancer } from './admin-session-security-enhancer'
 import { installAdmin2faEnhancer } from './admin-2fa-enhancer'
+import { installAdminConfigMenuEnhancer } from './admin-config-menu-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installPatientWelcomeEnhancer } from './patient-welcome-enhancer'
@@ -80,4 +81,4 @@ function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>
 
 installD1FetchCache();installAppResilience();installPlatformInviteEnhancer()
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientCalendarEnhancer();installPatientPortalEnhancer();installPatientWelcomeEnhancer();installPatientPaymentEnhancer();installPatientPaymentStabilizer();installAdminAppointmentEnhancer();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installPatientSelectionEnhancer();installPatientConsultationsEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
