@@ -1,0 +1,27 @@
+.admin-page{--admin-blue:#315f9f;--admin-blue-strong:#284f86;--admin-blue-mid:#6f91c8;--admin-blue-soft:#eaf1fb;--admin-blue-pale:#f4f7fb;--admin-border:#d9e4f2;--admin-text:#395575;--admin-muted:#70839b;background:#f4f7fb!important;color:var(--admin-text)!important}
+.admin-page .admin-main,.admin-page .admin-panel,.admin-page .admin-dashboard-card,.admin-page .admin-kpi,.admin-page .admin-table-card,.admin-page .admin-security-panel,.admin-page .admin-users-panel,.admin-page .admin-security-form,.admin-page .admin-create-user-form,.admin-page .admin-user-row,.admin-page .admin-2fa-card,.admin-page .admin-message-card{background:#fff!important;border-color:var(--admin-border)!important;color:var(--admin-text)!important}
+.admin-page .admin-sidebar{background:linear-gradient(180deg,#eaf1fb 0%,#eef4fb 100%)!important;border-color:#dce6f3!important}
+.admin-page .admin-sidebar nav button,.admin-page .logout{color:#60758f!important}
+.admin-page .admin-sidebar nav button:hover:not(:disabled),.admin-page .logout:hover{background:#f8fbff!important;color:var(--admin-blue-strong)!important}
+.admin-page .admin-sidebar nav button.active{background:var(--admin-blue-mid)!important;color:#fff!important;box-shadow:0 8px 22px rgba(49,95,159,.18)!important}
+.admin-page h1,.admin-page h2,.admin-page h3,.admin-page strong{color:var(--admin-text)}
+.admin-page .section-kicker,.admin-page .eyebrow{color:#6f86a5!important}
+.admin-page p,.admin-page small,.admin-page span{border-color:inherit}
+.admin-page input,.admin-page textarea,.admin-page select{background:#fff!important;border-color:#cddbec!important;color:#344f70!important}
+.admin-page input:focus,.admin-page textarea:focus,.admin-page select:focus{border-color:#7295cc!important;box-shadow:0 0 0 3px rgba(111,145,200,.14)!important;outline:none!important}
+.admin-page .admin-primary,.admin-page .primary-button,.admin-page button.admin-primary{background:var(--admin-blue-mid)!important;border-color:var(--admin-blue-mid)!important;color:#fff!important}
+.admin-page .admin-primary:hover,.admin-page .primary-button:hover{background:var(--admin-blue-strong)!important;border-color:var(--admin-blue-strong)!important}
+.admin-page .secondary-button,.admin-page .admin-dashboard-actions button{background:#fff!important;border-color:#cfddee!important;color:#48678e!important}
+.admin-page .secondary-button:hover,.admin-page .admin-dashboard-actions button:hover{background:#edf4fc!important;border-color:#b9cde5!important;color:#315f9f!important}
+.admin-page .admin-access-badge.owner,.admin-page .admin-access-badge.assistant,.admin-page .admin-status-chip,.admin-page .status-pill,.admin-page .admin-message-status{background:#e8f0fb!important;color:#47688f!important;border-color:#cfdeef!important}
+.admin-page .admin-kpi.attention,.admin-page .admin-kpi.success{background:#f7faff!important;border-color:#d7e3f1!important}
+.admin-page .admin-kpi.attention strong,.admin-page .admin-kpi.success strong{color:#3e638f!important}
+.admin-page .admin-2fa-status.on,.admin-page .admin-2fa-status.off{background:#eef4fb!important;color:#46688f!important}
+.admin-page .admin-2fa-status span{color:#6b7f98!important}
+.admin-page .admin-2fa-setup code{background:#315f9f!important;color:#fff!important}
+.admin-page .admin-security-notice.success,.admin-page .admin-2fa-notice.success,.admin-page .info-box{background:#eef4fb!important;border-color:#d1e0f0!important;color:#3f638d!important}
+.admin-page .admin-role-explainer>div,.admin-page .admin-dashboard-row,.admin-page .admin-dashboard-empty,.admin-page .admin-table-row.header,.admin-page .admin-messages-summary{background:#f7faff!important;border-color:#dfe8f3!important}
+.admin-page .admin-message-card.is-new{background:#f1f6fd!important;border-color:#bfd2e9!important;box-shadow:0 8px 24px rgba(49,95,159,.07)!important}
+.admin-page .admin-topbar{border-color:#dfe8f2!important}
+.admin-page .admin-welcome{background:#fff!important;border-color:#d8e4f1!important;color:#5c7390!important}
+.admin-page .admin-dashboard-actions{display:none!important}
