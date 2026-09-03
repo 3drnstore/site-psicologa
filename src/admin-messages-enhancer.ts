@@ -1,5 +1,7 @@
 import './admin-messages.css'
 import './admin-blue-final.css'
+import { installAdminConsultationsV2 } from './admin-consultations-v2'
+import { installAdminClinicalExport } from './admin-clinical-export'
 
 type ContactMessage={id:number;name:string;email:string;phone:string;message:string;status:string;created_at:string}
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
@@ -38,6 +40,7 @@ function bindMessages(){
 }
 
 export function installAdminMessagesEnhancer(){
+  installAdminConsultationsV2();installAdminClinicalExport()
   const apply=()=>{bindMessages();cleanupCustomViews()}
   ;[0,100,300,700].forEach(ms=>setTimeout(apply,ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>apply()).observe(root,{childList:true,subtree:true})
