@@ -25,7 +25,6 @@ function applyHomepageCta() {
     section.className = 'conversation-cta'
     section.innerHTML = `
       <div class="conversation-cta-inner">
-        <span class="section-kicker">Consultório de Psicologia</span>
         <h2>Vamos conversar</h2>
         <p>O primeiro passo para iniciar a psicoterapia é conversar. Vamos encontrar um momento em que possamos nos encontrar e conversar sobre o que está em sua mente.</p>
         <button type="button" class="primary-button large conversation-booking-button">Agendar consulta</button>
