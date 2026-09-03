@@ -1,4 +1,5 @@
 import { cookie, randomToken, readCookie, sha256, verifyPassword } from './auth'
+import { adminSecurityConfig, checkAdminLoginGuard, clearAdminAccountFailures, recordAdminLoginFailure, verifyTurnstile } from './admin-login-protection'
 import type { Env } from './types'
 
 const PATIENT_COOKIE='ps_session'
@@ -12,6 +13,8 @@ const expires=()=>new Date(Date.now()+SESSION_SECONDS*1000).toISOString()
 async function body(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 
 export async function handleAuthLoginFast(request:Request,env:Env,path:string):Promise<Response|null>{
+  if(path==='/api/admin/security-config'&&request.method==='GET')return json({ok:true,...adminSecurityConfig(env)})
+
   if(path==='/api/auth/login'&&request.method==='POST'){
     try{
       const b=await body(request)
@@ -34,8 +37,18 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       const b=await body(request)
       const email=String(b.email||'').trim().toLowerCase()
       const password=String(b.password||'')
+      const guard=await checkAdminLoginGuard(request,env,email)
+      if(!guard.allowed)return json({ok:false,message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.',retry_after:guard.retryAfter},429,{'retry-after':String(guard.retryAfter||60)})
+
+      const turnstile=await verifyTurnstile(request,env,String(b.turnstile_token||''))
+      if(!turnstile.ok)return json({ok:false,message:'Confirme a verificação de segurança para continuar.',turnstile_required:true},403)
+
       const admin=await env.DB.prepare('SELECT id,email,display_name,role,password_hash,password_salt,active FROM admin_users WHERE email=?').bind(email).first<any>()
-      if(!admin||Number(admin.active)!==1||!admin.password_hash||!admin.password_salt||!(await verifyPassword(password,admin.password_salt,admin.password_hash)))return json({ok:false,message:'E-mail ou senha inválidos.'},401)
+      if(!admin||Number(admin.active)!==1||!admin.password_hash||!admin.password_salt||!(await verifyPassword(password,admin.password_salt,admin.password_hash))){
+        await recordAdminLoginFailure(env,guard.ipKey!,guard.accountKey!)
+        return json({ok:false,message:'E-mail ou senha inválidos.'},401)
+      }
+      await clearAdminAccountFailures(env,guard.accountKey!)
       const token=randomToken(),tokenHash=await sha256(token)
       await env.DB.prepare('INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(),String(admin.id),tokenHash,expires()).run()
       return json({ok:true,admin:{id:admin.id,email:admin.email,display_name:admin.display_name,role:admin.role}},200,{'set-cookie':cookie(ADMIN_COOKIE,token,SESSION_SECONDS)})
