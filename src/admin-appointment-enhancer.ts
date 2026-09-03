@@ -82,6 +82,8 @@ async function enrichGrid(grid:HTMLElement){
       const a=byStart.get(starts)
       if(!a)return
       cell.classList.add('has-appointment')
+      cell.classList.remove('free','occupied','unset','blocked','held','confirmed')
+      cell.classList.add(a.status==='confirmed'?'confirmed':'held')
       cell.dataset.appointmentId=String(a.id)
       cell.innerHTML=`<span class="gc-patient-name">${esc(a.full_name)}</span><small class="gc-patient-status">${esc(appointmentStatus(a))}</small>`
       cell.addEventListener('click',()=>renderDetail(host,a))
