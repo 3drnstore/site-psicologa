@@ -1,6 +1,6 @@
 [package]
 name = "psicogestao"
-version = "0.1.0"
+version = "0.1.5"
 description = "PsicoGestão Desktop"
 authors = ["PsicoGestão"]
 edition = "2021"
