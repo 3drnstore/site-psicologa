@@ -3,6 +3,8 @@ import { handleGoogleAuth } from './google-auth'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
 import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
+import { handlePlatformCheckout } from './platform-checkout'
+import { handlePlatformPricing } from './platform-pricing'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
 import { handleAuthLoginFast } from './auth-login-fast'
@@ -94,6 +96,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const adminSecurity = await handleAdminSecurity(request, env, path)
   if (adminSecurity) return adminSecurity
 
+  const platformPricing = await handlePlatformPricing(request, env, path)
+  if (platformPricing) return platformPricing
+
   const roleBlocked = await guardAdminRole(request, env, path)
   if (roleBlocked) return roleBlocked
 
@@ -115,6 +120,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (path.startsWith('/api/payments/')) {
     try {
       if (path === '/api/payments/checkout' && request.method === 'POST') {
+        const platformResponse = await handlePlatformCheckout(request.clone(), env, path)
+        if (platformResponse) return platformResponse
         const probe = await request.clone().json().catch(() => ({})) as any
         if (probe.method === 'pix') {
           const pixResponse = await handleMercadoPagoPixV3(request, env, path)
