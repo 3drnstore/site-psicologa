@@ -1,0 +1,1 @@
+Portal do paciente: navegação externa isolada do root React. Não inserir/remover filhos dentro de .patient-page/.patient-content por enhancers.
