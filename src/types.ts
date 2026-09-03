@@ -17,6 +17,8 @@ export interface Env {
   ADMIN_SETUP_TOKEN?: string
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
+  TURNSTILE_SITE_KEY?: string
+  TURNSTILE_SECRET_KEY?: string
 }
 
 export type PatientSession = {
