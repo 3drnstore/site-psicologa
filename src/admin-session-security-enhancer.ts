@@ -3,7 +3,7 @@ import './admin-session-security.css'
 type AdminSession={id:string;created_at:string;expires_at:string;current:boolean}
 type SecurityEvent={id:string;action:string;entity_type:string;entity_id?:string|null;created_at:string}
 
-const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
+const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]||c))
 const dateTime=(value:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))
 
 async function request(path:string,init?:RequestInit){
@@ -85,8 +85,13 @@ function bind(host:HTMLElement){
     const others=target.closest<HTMLButtonElement>('[data-end-other-sessions]')
     if(others){
       others.disabled=true
-      try{const result=await request('/api/admin/security/sessions/others',{method:'DELETE'});notice(host,result.message||'Outras sessões encerradas.');await Promise.all([loadSessions(host),loadHistory(host)])}
-      catch(error){notice(host,error instanceof Error?error.message:'Não foi possível encerrar as outras sessões.',true)}finally{others.disabled=false}
+      try{
+        const data=await request('/api/admin/security/sessions')
+        const active=((data.sessions||[]) as AdminSession[]).filter(session=>!session.current)
+        for(const session of active)await request(`/api/admin/security/sessions/${encodeURIComponent(session.id)}`,{method:'DELETE'})
+        notice(host,active.length?`${active.length} outra(s) sessão(ões) encerrada(s).`:'Não havia outras sessões ativas.')
+        await Promise.all([loadSessions(host),loadHistory(host)])
+      }catch(error){notice(host,error instanceof Error?error.message:'Não foi possível encerrar as outras sessões.',true)}finally{others.disabled=false}
       return
     }
     if(target.closest('[data-refresh-security]'))await Promise.all([loadSessions(host),loadHistory(host)])
