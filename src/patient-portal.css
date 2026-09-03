@@ -32,3 +32,17 @@ html.patient-portal-mounted body::after{content:"Psicóloga Jacqueline Siqueira\
 .patient-sidebar-foot{display:none!important}
 .patient-stable-view{left:242px!important;top:82px!important;padding:34px 38px 48px!important;background:#f5f7f4!important}
 }
+
+/* Agenda desktop: restaura a grade semanal compacta anterior */
+@media(min-width:1001px){
+.patient-stable-view>.patient-agenda-head,.patient-stable-view>.patient-week-grid,.patient-stable-view>.patient-booking-box,.patient-stable-view>.patient-action-message{max-width:1120px!important}
+.patient-agenda-head{margin-bottom:4px!important}.patient-agenda-head h1{font-size:38px!important}.patient-agenda-head p{margin-bottom:14px!important}
+.patient-week-nav{margin:12px auto 18px!important}.patient-week-nav button{width:38px!important;height:38px!important;font-size:24px!important;background:#e5eee9!important;border:0!important}.patient-week-nav strong{font-size:15px!important;font-weight:800!important}
+.patient-week-grid{grid-template-columns:repeat(5,minmax(135px,1fr))!important;gap:16px!important;align-items:start!important;width:100%!important;margin:0 auto!important;padding:6px 2px 12px!important}
+.patient-week-day{min-width:135px!important;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important}
+.patient-week-day>header{margin:0 0 10px!important;gap:4px!important}.patient-week-day>header strong{display:grid!important;place-items:center!important;width:44px!important;height:44px!important;border-radius:50%!important;font-size:20px!important;line-height:1!important;color:#4f6f66!important}.patient-week-day>header span{font-size:12px!important;font-weight:600!important;color:#6f827b!important}
+.patient-week-day>div{display:grid!important;grid-template-columns:1fr!important;gap:8px!important}
+.patient-slot{min-height:58px!important;border-radius:8px!important;padding:8px 10px!important;display:grid!important;grid-template-columns:1fr!important;align-items:center!important;justify-items:start!important;background:#edf4f0!important;border:1px solid #d5e4dc!important;color:#45665d!important;box-shadow:0 1px 4px rgba(69,102,93,.06)!important}
+.patient-slot span{font-size:13px!important}.patient-slot small{font-size:10px!important;color:#658078!important}.patient-slot.free:hover{background:#e4eee9!important;transform:translateY(-1px)!important;box-shadow:0 4px 10px rgba(69,102,93,.1)!important}.patient-slot.selected{background:#58786f!important;border-color:#58786f!important;color:#fff!important;outline:3px solid rgba(88,120,111,.22)!important}.patient-slot.selected small{color:#eff6f2!important}.patient-slot.occupied{background:#efefef!important;border-color:#e9e9e9!important;color:#757575!important}.patient-slot.occupied small{color:#8a8a8a!important}
+.patient-booking-box{margin-top:18px!important;padding:15px 18px!important;border-radius:14px!important;grid-template-columns:1fr 1fr minmax(250px,auto)!important}
+}
