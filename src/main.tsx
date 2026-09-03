@@ -11,6 +11,7 @@ import { installPasswordEnhancer } from './password-enhancer'
 import { installAdminCalendarEnhancer } from './admin-calendar-enhancer'
 import { installAdminStateEnhancer } from './admin-state-enhancer'
 import { installAdminSecurityEnhancer } from './admin-security-enhancer'
+import { installAdminSessionSecurityEnhancer } from './admin-session-security-enhancer'
 import { installPatientCalendarEnhancer } from './patient-calendar-enhancer'
 import { installPatientPortalEnhancer } from './patient-portal-enhancer'
 import { installPatientWelcomeEnhancer } from './patient-welcome-enhancer'
@@ -142,6 +143,7 @@ installPasswordEnhancer()
 installAdminCalendarEnhancer()
 installAdminStateEnhancer()
 installAdminSecurityEnhancer()
+installAdminSessionSecurityEnhancer()
 installPatientCalendarEnhancer()
 installPatientPortalEnhancer()
 installPatientWelcomeEnhancer()
