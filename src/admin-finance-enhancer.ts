@@ -5,7 +5,7 @@ type MonthRow={key:string;year:number;month:number;total:number;count:number}
 
 const money=(cents:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100)
 const monthName=(year:number,month:number)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(year,month,1)).replace(/^./,c=>c.toUpperCase())
-const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;' }[c]||c))
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
 
 async function loadAppointments(){
   const response=await fetch('/api/admin/appointments',{credentials:'include',cache:'no-store'})
