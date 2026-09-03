@@ -23,10 +23,10 @@ function financeButton(){
 
 function normalizeLabels(){
   const button=financeButton()
-  if(button){
+  if(button&&(button.textContent||'').trim()!=='Financeiro'){
     const textNodes=[...button.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE)
     if(textNodes.length)textNodes[textNodes.length-1].textContent=' Financeiro'
-    else if((button.textContent||'').trim()==='Pagamentos')button.append(' Financeiro')
+    else button.append(' Financeiro')
   }
   const title=document.querySelector<HTMLElement>('.admin-topbar h1')
   if(title?.textContent?.trim()==='Pagamentos')title.textContent='Financeiro'
