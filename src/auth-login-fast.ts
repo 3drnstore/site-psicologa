@@ -2,6 +2,7 @@ import { cookie, randomToken, readCookie, sha256, verifyPassword } from './auth'
 import { verifyTotp } from './totp'
 import { adminSecurityConfig, checkAdminLoginGuard, clearAdminAccountFailures, recordAdminLoginFailure, verifyTurnstile } from './admin-login-protection'
 import { ensureAdminAuthSchema } from './admin-auth-schema'
+import { readAdminSession } from './admin-session-reader'
 import type { Env } from './types'
 
 const PATIENT_COOKIE='ps_session',ADMIN_COOKIE='ps_admin_session',SESSION_SECONDS=60*60*24*14,NO_STORE={'cache-control':'no-store, no-cache, must-revalidate','pragma':'no-cache'}
@@ -16,27 +17,6 @@ async function safeGuard(request:Request,env:Env,email:string){
     console.error('Admin login guard unavailable:',error instanceof Error?error.message:String(error))
     return {allowed:true,ipKey:null,accountKey:null}
   }
-}
-
-async function adminFromSession(request:Request,env:Env){
-  await ensureAdminAuthSchema(env)
-  const token=readCookie(request,ADMIN_COOKIE)
-  if(!token)return null
-  const tokenHash=await sha256(token)
-  const session=await env.DB.prepare(`SELECT id,admin_user_id,admin_email,admin_display_name,admin_role,expires_at FROM admin_sessions WHERE token_hash=? AND expires_at>?`).bind(tokenHash,now()).first<any>()
-  if(!session)return null
-
-  if(session.admin_email&&session.admin_display_name&&session.admin_role){
-    return {id:String(session.admin_user_id),email:String(session.admin_email),display_name:String(session.admin_display_name),role:String(session.admin_role),session_id:String(session.id)}
-  }
-
-  const user=await env.DB.prepare('SELECT id,email,display_name,role,active FROM admin_users WHERE id=?').bind(String(session.admin_user_id)).first<any>()
-  if(!user||Number(user.active)!==1){
-    await env.DB.prepare('DELETE FROM admin_sessions WHERE id=?').bind(String(session.id)).run().catch(()=>{})
-    return null
-  }
-  await env.DB.prepare('UPDATE admin_sessions SET admin_email=?,admin_display_name=?,admin_role=? WHERE id=?').bind(String(user.email),String(user.display_name),String(user.role),String(session.id)).run().catch(()=>{})
-  return {id:String(user.id),email:String(user.email),display_name:String(user.display_name),role:String(user.role),session_id:String(session.id)}
 }
 
 export async function handleAuthLoginFast(request:Request,env:Env,path:string):Promise<Response|null>{
@@ -99,7 +79,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
 
   if(path==='/api/admin/me'&&request.method==='GET'){
     try{
-      const a=await adminFromSession(request,env)
+      const a=await readAdminSession(request,env)
       return a?json({ok:true,admin:{id:a.id,email:a.email,display_name:a.display_name,role:a.role}}):json({ok:false,message:'Sessão expirada.'},401)
     }catch(error){
       console.error('Admin session validation fatal:',error instanceof Error?error.message:String(error))
