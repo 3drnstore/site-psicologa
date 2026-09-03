@@ -1,6 +1,7 @@
 import { cookie, randomToken, readCookie, sha256, verifyPassword } from './auth'
 import { verifyTotp } from './totp'
 import { adminSecurityConfig, checkAdminLoginGuard, clearAdminAccountFailures, recordAdminLoginFailure, verifyTurnstile } from './admin-login-protection'
+import { ensureAdminAuthSchema } from './admin-auth-schema'
 import type { Env } from './types'
 
 const PATIENT_COOKIE='ps_session',ADMIN_COOKIE='ps_admin_session',SESSION_SECONDS=60*60*24*14,NO_STORE={'cache-control':'no-store, no-cache, must-revalidate','pragma':'no-cache'}
@@ -8,25 +9,6 @@ const json=(data:unknown,status=200,headers:HeadersInit={})=>new Response(JSON.s
 const now=()=>new Date().toISOString(),expires=()=>new Date(Date.now()+SESSION_SECONDS*1000).toISOString()
 async function body(request:Request){try{return await request.json() as Record<string,any>}catch{return {}}}
 async function auditAdminLogin(env:Env,id:string){try{await env.DB.prepare(`INSERT INTO audit_log (id,actor_type,actor_id,action,entity_type) VALUES (?,'admin',?,'admin_login','admin_session')`).bind(crypto.randomUUID(),id).run()}catch{}}
-
-let adminAuthSchemaReady=false
-async function ensureAdminAuthSchema(env:Env){
-  if(adminAuthSchemaReady)return
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS admin_sessions(
-      id TEXT PRIMARY KEY,
-      admin_user_id TEXT NOT NULL,
-      token_hash TEXT NOT NULL UNIQUE,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `)
-  const info=await env.DB.prepare('PRAGMA table_info(admin_users)').all<any>()
-  const columns=new Set((info.results||[]).map((row:any)=>String(row.name)))
-  if(!columns.has('totp_secret'))await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN totp_secret TEXT').run()
-  if(!columns.has('totp_enabled'))await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0').run()
-  adminAuthSchemaReady=true
-}
 
 async function safeGuard(request:Request,env:Env,email:string){
   try{return await checkAdminLoginGuard(request,env,email)}
@@ -58,19 +40,24 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       if(!guard.allowed)return json({ok:false,message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.'},429)
       const turnstile=await verifyTurnstile(request,env,String(b.turnstile_token||''))
       if(!turnstile.ok)return json({ok:false,message:'Confirme a verificação de segurança para continuar.',turnstile_required:true},403)
+
       const a=await env.DB.prepare('SELECT id,email,display_name,role,password_hash,password_salt,active,totp_secret,totp_enabled FROM admin_users WHERE email=?').bind(email).first<any>()
-      if(!a||Number(a.active)!==1||!(await verifyPassword(password,a.password_salt,a.password_hash))){
+      const credentialsComplete=Boolean(a?.password_hash&&a?.password_salt)
+      const passwordOk=credentialsComplete?await verifyPassword(password,String(a.password_salt),String(a.password_hash)):false
+      if(!a||Number(a.active)!==1||!passwordOk){
         if(guard.ipKey&&guard.accountKey)try{await recordAdminLoginFailure(env,guard.ipKey,guard.accountKey)}catch(error){console.error('Admin failure guard:',error instanceof Error?error.message:String(error))}
         return json({ok:false,message:'E-mail ou senha inválidos.'},401)
       }
+
       if(Number(a.totp_enabled)===1){
         const code=String(b.totp_code||'')
         if(!code)return json({ok:false,message:'Digite o código do aplicativo autenticador.',two_factor_required:true},401)
-        if(!a.totp_secret||!(await verifyTotp(a.totp_secret,code))){
+        if(!a.totp_secret||!(await verifyTotp(String(a.totp_secret),code))){
           if(guard.ipKey&&guard.accountKey)try{await recordAdminLoginFailure(env,guard.ipKey,guard.accountKey)}catch(error){console.error('Admin 2FA guard:',error instanceof Error?error.message:String(error))}
           return json({ok:false,message:'Código de autenticação inválido.',two_factor_required:true},401)
         }
       }
+
       if(guard.accountKey)try{await clearAdminAccountFailures(env,guard.accountKey)}catch(error){console.error('Admin guard clear:',error instanceof Error?error.message:String(error))}
       const token=randomToken()
       await env.DB.prepare('INSERT INTO admin_sessions (id,admin_user_id,token_hash,expires_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(),String(a.id),await sha256(token),expires()).run()
@@ -78,7 +65,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       return json({ok:true,admin:{id:a.id,email:a.email,display_name:a.display_name,role:a.role}},200,{'set-cookie':cookie(ADMIN_COOKIE,token,SESSION_SECONDS)})
     }catch(error){
       console.error('Admin login fatal:',error instanceof Error?error.message:String(error))
-      return json({ok:false,message:'O acesso profissional está temporariamente indisponível.'},503)
+      return json({ok:false,message:'O acesso profissional está temporariamente indisponível.',diagnostic_code:'ADMIN_AUTH_RUNTIME'},503)
     }
   }
 
@@ -98,7 +85,7 @@ export async function handleAuthLoginFast(request:Request,env:Env,path:string):P
       return a?json({ok:true,admin:a}):json({ok:false,message:'Sessão expirada.'},401)
     }catch(error){
       console.error('Admin session validation fatal:',error instanceof Error?error.message:String(error))
-      return json({ok:false,message:'O acesso profissional está temporariamente indisponível.'},503)
+      return json({ok:false,message:'O acesso profissional está temporariamente indisponível.',diagnostic_code:'ADMIN_SESSION_RUNTIME'},503)
     }
   }
   return null
