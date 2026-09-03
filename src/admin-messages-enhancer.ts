@@ -2,6 +2,7 @@ import './admin-messages.css'
 import './admin-blue-final.css'
 import { installAdminConsultationsV2 } from './admin-consultations-v2'
 import { installAdminClinicalExport } from './admin-clinical-export'
+import { installAdminFinanceEnhancer } from './admin-finance-enhancer'
 
 type ContactMessage={id:number;name:string;email:string;phone:string;message:string;status:string;created_at:string}
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
@@ -13,9 +14,9 @@ async function setMessageStatus(id:number,status:'new'|'read'){const r=await fet
 function topTitle(){return (document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()}
 function cleanupCustomViews(){
   const title=topTitle();const host=document.querySelector<HTMLElement>('.admin-custom-view');if(!host)return
-  if(title==='Visão geral'||title==='Consultas'||title==='Pagamentos')host.querySelector('.admin-dashboard-actions')?.remove()
-  if(title==='Consultas'||title==='Pagamentos')host.querySelector('.admin-section-title')?.remove()
-  if(title==='Pagamentos')host.querySelectorAll<HTMLElement>('.admin-table-row:not(.header)').forEach(row=>row.children[1]?.querySelector('small')?.remove())
+  if(title==='Visão geral'||title==='Consultas'||title==='Pagamentos'||title==='Financeiro')host.querySelector('.admin-dashboard-actions')?.remove()
+  if(title==='Consultas'||title==='Pagamentos'||title==='Financeiro')host.querySelector('.admin-section-title')?.remove()
+  if(title==='Pagamentos'||title==='Financeiro')host.querySelectorAll<HTMLElement>('.admin-table-row:not(.header)').forEach(row=>row.children[1]?.querySelector('small')?.remove())
 }
 
 function setHeader(title:string){const h=document.querySelector<HTMLElement>('.admin-topbar h1');const k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent=title;if(k)k.textContent='Gestão profissional'}
@@ -40,7 +41,7 @@ function bindMessages(){
 }
 
 export function installAdminMessagesEnhancer(){
-  installAdminConsultationsV2();installAdminClinicalExport()
+  installAdminConsultationsV2();installAdminClinicalExport();installAdminFinanceEnhancer()
   const apply=()=>{bindMessages();cleanupCustomViews()}
   ;[0,100,300,700].forEach(ms=>setTimeout(apply,ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>apply()).observe(root,{childList:true,subtree:true})
