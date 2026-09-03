@@ -23,6 +23,9 @@ function financeButton(){
 
 function normalizeLabels(){
   const button=financeButton()
+  const sidebar=document.querySelector<HTMLElement>('.admin-sidebar')
+  const navigationReady=button?.dataset.adminView==='pagamentos'||sidebar?.dataset.desktopNavBound==='1'
+  if(button&&!navigationReady)return
   if(button&&(button.textContent||'').trim()!=='Financeiro'){
     const textNodes=[...button.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE)
     if(textNodes.length)textNodes[textNodes.length-1].textContent=' Financeiro'
