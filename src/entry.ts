@@ -18,6 +18,7 @@ import { handleContactApi } from './contact-api'
 import { checkRateLimit } from './rate-limit'
 import { handleHealthApi } from './health-api'
 import { protectApiRequest } from './api-protection'
+import { ensureSchemaReady } from './schema-bootstrap'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -56,6 +57,8 @@ function withSecurityHeaders(response: Response, path: string) {
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url)
   const path = url.pathname
+
+  await ensureSchemaReady(env)
 
   const health = await handleHealthApi(request, env, path)
   if (health) return health
@@ -178,7 +181,12 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(request.url).pathname
-    const response = await handleRequest(request, env, ctx)
-    return withSecurityHeaders(response, path)
+    try {
+      const response = await handleRequest(request, env, ctx)
+      return withSecurityHeaders(response, path)
+    } catch (error) {
+      console.error('Schema/bootstrap error:', error instanceof Error ? error.message : String(error))
+      return withSecurityHeaders(apiError('O sistema está temporariamente indisponível. Tente novamente em alguns instantes.'), path)
+    }
   },
 }
