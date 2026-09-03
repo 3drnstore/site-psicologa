@@ -1,5 +1,14 @@
 const DESKTOP_UI_SCRIPT: &str = r#"
 (() => {
+  const minimalEye = `
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+        fill="none" stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </svg>
+  `;
+
   const installDesktopUi = () => {
     if (!document.getElementById('psicogestao-desktop-style')) {
       const style = document.createElement('style');
@@ -71,6 +80,12 @@ const DESKTOP_UI_SCRIPT: &str = r#"
         .auth-page .password-toggle-dom {
           color: #5676a8 !important;
         }
+
+        .auth-page .password-toggle-dom {
+          display: inline-grid !important;
+          place-items: center !important;
+          line-height: 0 !important;
+        }
       `;
       (document.head || document.documentElement).appendChild(style);
     }
@@ -80,6 +95,12 @@ const DESKTOP_UI_SCRIPT: &str = r#"
         element.style.setProperty('display', 'none', 'important');
       });
     }
+
+    document.querySelectorAll('.password-toggle-dom').forEach((button) => {
+      if (!button.querySelector('svg')) {
+        button.innerHTML = minimalEye;
+      }
+    });
   };
 
   installDesktopUi();
