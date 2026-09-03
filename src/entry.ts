@@ -60,16 +60,26 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const url = new URL(request.url)
   const path = url.pathname
 
-  await ensureSchemaReady(env)
-
-  const health = await handleHealthApi(request, env, path)
-  if (health) return health
-
   const blocked = protectApiRequest(request, path)
   if (blocked) return blocked
 
   const limited = checkRateLimit(request, path)
   if (limited) return limited
+
+  // O acesso profissional é deliberadamente independente do bootstrap de schema.
+  // Assim, uma migração nova nunca pode derrubar login, logout ou restauração de sessão do admin.
+  const criticalAdminAuth = path === '/api/admin/login' || path === '/api/admin/logout' || path === '/api/admin/me'
+  if (criticalAdminAuth) {
+    const fastAuth = await handleAuthLoginFast(request, env, path)
+    if (fastAuth) return fastAuth
+    const authV2 = await handleAuthV2(request, env, path)
+    if (authV2) return authV2
+  }
+
+  await ensureSchemaReady(env)
+
+  const health = await handleHealthApi(request, env, path)
+  if (health) return health
 
   if (path === '/api/contact') {
     try {
@@ -87,11 +97,13 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     if (response) return response
   }
 
-  const fastAuth = await handleAuthLoginFast(request, env, path)
-  if (fastAuth) return fastAuth
+  if (!criticalAdminAuth) {
+    const fastAuth = await handleAuthLoginFast(request, env, path)
+    if (fastAuth) return fastAuth
 
-  const authV2 = await handleAuthV2(request, env, path)
-  if (authV2) return authV2
+    const authV2 = await handleAuthV2(request, env, path)
+    if (authV2) return authV2
+  }
 
   const adminSecurity = await handleAdminSecurity(request, env, path)
   if (adminSecurity) return adminSecurity
