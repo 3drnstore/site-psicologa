@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - tauri-desktop
     paths:
       - "src-tauri/**"
