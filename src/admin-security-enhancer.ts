@@ -1,0 +1,186 @@
+import './admin-security.css'
+
+type Admin={id:string;email:string;display_name:string;role:'psychologist'|'assistant'}
+type AdminUser={id:string;email:string;display_name:string;role:'psychologist'|'assistant';active:number;created_at?:string}
+
+let admin:Admin|null=null
+let scheduled:number|undefined
+let loadingUsers=false
+
+const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
+
+async function request(path:string,init?:RequestInit){
+  const response=await fetch(path,{credentials:'include',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
+  const data=await response.json().catch(()=>({})) as any
+  if(!response.ok)throw new Error(data.message||'Não foi possível concluir a solicitação.')
+  return data
+}
+
+function navButton(label:string){return [...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')].find(b=>(b.textContent||'').trim()===label)}
+function configActive(){return navButton('Configurações')?.classList.contains('active')===true}
+function showNotice(host:HTMLElement,message:string,error=false){
+  let notice=host.querySelector<HTMLElement>('.admin-security-notice')
+  if(!notice){notice=document.createElement('div');notice.className='admin-security-notice';host.prepend(notice)}
+  notice.className=`admin-security-notice ${error?'error':'success'}`
+  notice.textContent=message
+  window.setTimeout(()=>notice?.remove(),5000)
+}
+
+function securityMarkup(){
+  return `<section class="admin-panel admin-security-panel">
+    <div class="admin-security-heading"><div><span class="section-kicker">Conta profissional</span><h2>Segurança</h2><p>Altere o e-mail usado no login ou defina uma nova senha para seu acesso.</p></div><span class="admin-access-badge ${admin?.role==='psychologist'?'owner':'assistant'}">${admin?.role==='psychologist'?'Psicóloga / Administrador':'Assistente'}</span></div>
+    <div class="admin-security-grid">
+      <form data-admin-email-form class="admin-security-form">
+        <h3>Alterar e-mail</h3>
+        <label>Novo e-mail<input type="email" name="email" value="${esc(admin?.email||'')}" autocomplete="email" required></label>
+        <label>Senha atual<input type="password" name="current_password" autocomplete="current-password" required></label>
+        <button class="admin-primary" type="submit">Salvar novo e-mail</button>
+      </form>
+      <form data-admin-password-form class="admin-security-form">
+        <h3>Alterar senha</h3>
+        <label>Senha atual<input type="password" name="current_password" autocomplete="current-password" required></label>
+        <label>Nova senha<input type="password" name="new_password" minlength="10" autocomplete="new-password" required><small>Mínimo de 10 caracteres.</small></label>
+        <label>Confirmar nova senha<input type="password" name="confirm_password" minlength="10" autocomplete="new-password" required></label>
+        <button class="admin-primary" type="submit">Alterar senha</button>
+      </form>
+    </div>
+  </section>`
+}
+
+function usersMarkup(){
+  return `<section class="admin-panel admin-users-panel">
+    <div class="admin-security-heading"><div><span class="section-kicker">Controle de acesso</span><h2>Gestão de usuários</h2><p>Cadastre outros acessos ao PsicoGestão e escolha o nível de permissão.</p></div></div>
+    <div class="admin-role-explainer"><div><strong>Psicóloga / Administrador</strong><span>Acesso completo, incluindo prontuários, configurações e gestão de usuários.</span></div><div><strong>Assistente</strong><span>Acesso operacional à agenda, consultas e pagamentos. Não acessa prontuários clínicos.</span></div></div>
+    <form data-admin-create-user class="admin-create-user-form">
+      <label>Nome<input name="display_name" required></label>
+      <label>E-mail<input name="email" type="email" required></label>
+      <label>Senha inicial<input name="password" type="password" minlength="10" required></label>
+      <label>Nível de acesso<select name="role"><option value="assistant">Assistente</option><option value="psychologist">Psicóloga / Administrador</option></select></label>
+      <button class="admin-primary" type="submit">Cadastrar acesso</button>
+    </form>
+    <div class="admin-user-list" data-admin-user-list><div class="empty-state">Carregando usuários...</div></div>
+  </section>`
+}
+
+async function loadUsers(host:HTMLElement){
+  if(loadingUsers||admin?.role!=='psychologist')return
+  loadingUsers=true
+  const list=host.querySelector<HTMLElement>('[data-admin-user-list]')
+  try{
+    const data=await request('/api/admin/users')
+    const users=(data.users||[]) as AdminUser[]
+    if(!list)return
+    list.innerHTML=users.map(user=>`<article class="admin-user-row" data-user-id="${esc(user.id)}">
+      <div class="admin-user-identity"><strong>${esc(user.display_name)}</strong><span>${esc(user.email)}</span><small>${user.id===admin?.id?'Seu acesso atual':''}</small></div>
+      <label>Nome<input data-user-name value="${esc(user.display_name)}"></label>
+      <label>Nível<select data-user-role ${user.id===admin?.id?'disabled':''}><option value="assistant" ${user.role==='assistant'?'selected':''}>Assistente</option><option value="psychologist" ${user.role==='psychologist'?'selected':''}>Psicóloga / Administrador</option></select></label>
+      <label class="admin-user-active"><input type="checkbox" data-user-active ${Number(user.active)===1?'checked':''} ${user.id===admin?.id?'disabled':''}><span>Ativo</span></label>
+      <button type="button" class="secondary-button" data-save-user>Salvar</button>
+    </article>`).join('')||'<div class="empty-state">Nenhum acesso cadastrado.</div>'
+  }catch(error){if(list)list.innerHTML=`<div class="error-box">${esc(error instanceof Error?error.message:'Não foi possível carregar os usuários.')}</div>`}
+  finally{loadingUsers=false}
+}
+
+function bindHost(host:HTMLElement){
+  if(host.dataset.securityBound)return
+  host.dataset.securityBound='1'
+
+  host.querySelector<HTMLFormElement>('[data-admin-email-form]')?.addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;const fd=new FormData(form)
+    try{
+      const result=await request('/api/admin/security/email',{method:'PATCH',body:JSON.stringify({email:String(fd.get('email')||''),current_password:String(fd.get('current_password')||'')})})
+      if(admin)admin.email=result.email||String(fd.get('email')||'')
+      const password=form.querySelector<HTMLInputElement>('input[name=current_password]');if(password)password.value=''
+      showNotice(host,result.message||'E-mail atualizado.')
+    }catch(error){showNotice(host,error instanceof Error?error.message:'Não foi possível alterar o e-mail.',true)}
+  })
+
+  host.querySelector<HTMLFormElement>('[data-admin-password-form]')?.addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;const fd=new FormData(form);const next=String(fd.get('new_password')||''),confirm=String(fd.get('confirm_password')||'')
+    if(next!==confirm){showNotice(host,'A confirmação da nova senha não confere.',true);return}
+    try{
+      const result=await request('/api/admin/security/password',{method:'PATCH',body:JSON.stringify({current_password:String(fd.get('current_password')||''),new_password:next})})
+      showNotice(host,result.message||'Senha alterada.')
+      window.setTimeout(()=>{window.location.href='/admin'},1200)
+    }catch(error){showNotice(host,error instanceof Error?error.message:'Não foi possível alterar a senha.',true)}
+  })
+
+  host.querySelector<HTMLFormElement>('[data-admin-create-user]')?.addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;const fd=new FormData(form)
+    try{
+      const result=await request('/api/admin/users',{method:'POST',body:JSON.stringify({display_name:String(fd.get('display_name')||''),email:String(fd.get('email')||''),password:String(fd.get('password')||''),role:String(fd.get('role')||'assistant')})})
+      form.reset();showNotice(host,result.message||'Acesso cadastrado.');await loadUsers(host)
+    }catch(error){showNotice(host,error instanceof Error?error.message:'Não foi possível cadastrar o acesso.',true)}
+  })
+
+  host.addEventListener('click',async event=>{
+    const button=(event.target as HTMLElement).closest<HTMLButtonElement>('[data-save-user]');if(!button)return
+    const row=button.closest<HTMLElement>('[data-user-id]');if(!row)return
+    const id=String(row.dataset.userId||''),displayName=row.querySelector<HTMLInputElement>('[data-user-name]')?.value||'',role=row.querySelector<HTMLSelectElement>('[data-user-role]')?.value||'assistant',active=row.querySelector<HTMLInputElement>('[data-user-active]')?.checked!==false
+    button.disabled=true
+    try{const result=await request(`/api/admin/users/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({display_name:displayName,role,active})});showNotice(host,result.message||'Acesso atualizado.');await loadUsers(host)}
+    catch(error){showNotice(host,error instanceof Error?error.message:'Não foi possível atualizar o acesso.',true)}
+    finally{button.disabled=false}
+  })
+}
+
+function applyRoleUi(){
+  if(!admin)return
+  const page=document.querySelector<HTMLElement>('.admin-page');if(page)page.dataset.adminRole=admin.role
+  const patients=navButton('Pacientes')
+  if(patients)patients.hidden=admin.role==='assistant'
+  document.querySelectorAll<HTMLElement>('[data-admin-open="Pacientes"]').forEach(el=>{el.hidden=admin?.role==='assistant'})
+  if(admin.role==='assistant'&&patients?.classList.contains('active')){
+    localStorage.setItem('psicogestao.admin.view','dashboard')
+    navButton('Painel')?.click()
+  }
+}
+
+function renderConfig(){
+  if(!admin||!configActive())return
+  const main=document.querySelector<HTMLElement>('.admin-main');if(!main)return
+  let host=main.querySelector<HTMLElement>('.admin-security-host')
+  if(!host){host=document.createElement('div');host.className='admin-security-host'}
+  const settings=main.querySelector<HTMLElement>('.settings-panel')
+  if(admin.role==='assistant'){
+    if(settings)settings.style.display='none'
+    if(!host.isConnected)main.appendChild(host)
+  }else{
+    if(settings)settings.style.display='block'
+    if(settings&&!host.isConnected)settings.after(host)
+    else if(!host.isConnected)main.appendChild(host)
+  }
+  if(host.dataset.renderedRole!==admin.role){
+    host.dataset.renderedRole=admin.role
+    host.dataset.securityBound=''
+    host.innerHTML=securityMarkup()+(admin.role==='psychologist'?usersMarkup():'')
+    bindHost(host)
+    if(admin.role==='psychologist')void loadUsers(host)
+  }
+}
+
+function cleanupConfig(){
+  if(configActive())return
+  document.querySelectorAll<HTMLElement>('.settings-panel').forEach(panel=>panel.style.display='')
+  document.querySelector('.admin-security-host')?.remove()
+}
+
+async function ensureAdmin(){
+  if(admin)return admin
+  try{const data=await request('/api/admin/me');admin=data.admin as Admin;return admin}catch{return null}
+}
+
+async function scan(){
+  if(!document.querySelector('.admin-page'))return
+  await ensureAdmin();if(!admin)return
+  applyRoleUi()
+  if(configActive())renderConfig();else cleanupConfig()
+}
+
+export function installAdminSecurityEnhancer(){
+  const schedule=()=>{if(scheduled)window.clearTimeout(scheduled);scheduled=window.setTimeout(()=>{scheduled=undefined;void scan()},80)}
+  schedule()
+  const root=document.getElementById('root')
+  if(root)new MutationObserver(schedule).observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:['class']})
+  window.addEventListener('pageshow',schedule)
+}
