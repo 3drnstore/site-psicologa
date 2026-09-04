@@ -3,6 +3,7 @@ import './admin-clinical-notes-enhancer.css'
 let installed=false
 let decorateBusy=false
 let scheduled=0
+const globalState=window as any
 
 async function api(path:string,init?:RequestInit){
   const response=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
@@ -18,11 +19,8 @@ function currentRecord(){
   return {panel,head,email}
 }
 
-async function currentPatientId(email:string){
-  if(!email)return 0
-  const list=await api('/api/admin/patients')
-  const patient=(list.patients||[]).find((p:any)=>String(p.email||'').toLowerCase()===email.toLowerCase())
-  return Number(patient?.id||0)
+function currentPatientId(panel?:HTMLElement|null){
+  return Number(globalState.__psSelectedAdminPatientId||panel?.dataset.patientId||0)
 }
 
 async function reloadCurrentPatient(){
@@ -51,8 +49,9 @@ async function decorateNotes(){
   if(decorateBusy)return
   decorateBusy=true
   try{
-    const patientId=await currentPatientId(email)
-    if(!patientId)throw new Error('Paciente não encontrado.')
+    const patientId=currentPatientId(panel)
+    if(!patientId)throw new Error('Não foi possível identificar o paciente selecionado. Clique novamente no paciente da lista.')
+    panel.dataset.patientId=String(patientId)
     const detail=await api(`/api/admin/patients/${patientId}`)
     const notes:any[]=detail.clinical_notes||[]
     articles.forEach((article,index)=>{
@@ -80,8 +79,8 @@ function scheduleDecorate(delay=40){window.clearTimeout(scheduled);scheduled=win
 
 async function saveNote(form:HTMLFormElement){
   if(form.dataset.noteSaving==='1')return
-  const {email}=currentRecord()
-  if(!email)return
+  const {panel}=currentRecord()
+  if(!panel)return
   const button=form.querySelector<HTMLButtonElement>('button[type="submit"]')
   let status=form.querySelector<HTMLElement>('[data-note-save-status]')
   if(!status){status=document.createElement('small');status.dataset.noteSaveStatus='1';status.className='clinical-note-save-status';button?.insertAdjacentElement('afterend',status)}
@@ -90,8 +89,8 @@ async function saveNote(form:HTMLFormElement){
   status.textContent=''
   const fd=new FormData(form)
   try{
-    const patientId=await currentPatientId(email)
-    if(!patientId)throw new Error('Paciente não encontrado.')
+    const patientId=currentPatientId(panel)
+    if(!patientId)throw new Error('Paciente não identificado. Clique novamente no paciente da lista.')
     const sessionDate=String(fd.get('session_date')||'').trim()
     const noteText=String(fd.get('note_text')||'').trim()
     if(!sessionDate||!noteText)throw new Error('Informe a data da sessão e a anotação.')
@@ -145,10 +144,9 @@ export function installAdminClinicalNotesEnhancer(){
   ;[0,50,150,350,800,1500].forEach(ms=>window.setTimeout(()=>void decorateNotes(),ms))
   const root=document.getElementById('root')
   if(root)new MutationObserver(()=>scheduleDecorate(60)).observe(root,{childList:true,subtree:true})
-  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))scheduleDecorate(80)},true)
+  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))scheduleDecorate(120)},true)
   window.addEventListener('pageshow',()=>scheduleDecorate(80))
   window.setInterval(()=>{if(document.querySelector('.record-panel .note-list article'))scheduleDecorate(0)},1200)
 }
 
-// Fallback independente da ordem de inicialização do restante do painel.
 queueMicrotask(()=>installAdminClinicalNotesEnhancer())
