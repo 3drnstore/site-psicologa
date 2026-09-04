@@ -49,9 +49,11 @@ export async function handleClinicalApi(request:Request,env:Env,path:string):Pro
     const patient=await env.DB.prepare('SELECT id,full_name,birth_date,cpf,phone,email,pricing_origin,created_at FROM patients WHERE id=?').bind(patientId).first<any>()
     if(!patient)return json({ok:false,message:'Paciente não encontrado.'},404)
     const appointments=await env.DB.prepare('SELECT a.id,a.status,a.amount_cents,a.paid_at,av.starts_at,av.ends_at FROM appointments a LEFT JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? ORDER BY av.starts_at DESC').bind(patientId).all<any>()
-    const encrypted=await env.DB.prepare('SELECT id,appointment_id,session_date,note_ciphertext,note_iv,wrapped_dek,wrap_iv,encryption_version,created_at,updated_at FROM clinical_notes WHERE patient_id=? ORDER BY session_date DESC,created_at DESC').bind(patientId).all<any>()
     const recurrence=await env.DB.prepare('SELECT id,patient_id,cadence_days,active,source_appointment_id,created_at,updated_at FROM patient_recurrence WHERE patient_id=? LIMIT 1').bind(patientId).first<any>().catch(()=>null)
-    return json({ok:true,patient,appointments:appointments.results||[],clinical_notes:encrypted.results||[],recurrence})
+    const wantsClinical=new URL(request.url).searchParams.get('clinical')==='1'
+    if(!wantsClinical)return json({ok:true,patient,appointments:appointments.results||[],clinical_notes:[],recurrence,clinical_locked:true})
+    const encrypted=await env.DB.prepare('SELECT id,appointment_id,session_date,note_ciphertext,note_iv,wrapped_dek,wrap_iv,encryption_version,created_at,updated_at FROM clinical_notes WHERE patient_id=? ORDER BY session_date DESC,created_at DESC').bind(patientId).all<any>()
+    return json({ok:true,patient,appointments:appointments.results||[],clinical_notes:encrypted.results||[],recurrence,clinical_locked:false})
   }
 
   if(isCreate){
