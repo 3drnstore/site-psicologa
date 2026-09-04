@@ -22,6 +22,8 @@ import { handleHealthApi } from './health-api'
 import { protectApiRequest } from './api-protection'
 import { ensureSchemaReady } from './schema-bootstrap'
 import { handleSessionManagement, runScheduledSessionTasks } from './session-management'
+import { handleRecurringCheckout } from './recurring-checkout'
+import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -77,6 +79,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const platformPricing = await handlePlatformPricing(request, env, path); if (platformPricing) return platformPricing
   const roleBlocked = await guardAdminRole(request, env, path); if (roleBlocked) return roleBlocked
 
+  await touchRecurrence(request, env, path)
   const sessionManagement = await handleSessionManagement(request, env, path)
   if (sessionManagement) return sessionManagement
 
@@ -88,6 +91,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (path.startsWith('/api/payments/')) {
     try {
       if (path === '/api/payments/checkout' && request.method === 'POST') {
+        const recurringResponse = await handleRecurringCheckout(request.clone(), env, path); if (recurringResponse) return recurringResponse
         const platformResponse = await handlePlatformCheckout(request.clone(), env, path); if (platformResponse) return platformResponse
         const probe = await request.clone().json().catch(() => ({})) as any
         if (probe.method === 'pix') { const pixResponse = await handleMercadoPagoPixV3(request, env, path); if (pixResponse) return pixResponse }
@@ -120,6 +124,6 @@ export default {
     catch (error) { console.error('Schema/bootstrap error:', error instanceof Error ? error.message : String(error)); return withSecurityHeaders(apiError('O sistema está temporariamente indisponível. Tente novamente em alguns instantes.'), path) }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await runScheduledSessionTasks(env) })())
+    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await runScheduledSessionTasks(env) })())
   },
 }
