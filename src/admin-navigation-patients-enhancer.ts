@@ -8,17 +8,21 @@ let patientsCache:Patient[]|null=null
 let patientsLoading:Promise<Patient[]>|null=null
 let timer=0
 let restoring=false
+const STORAGE_KEY='psicogestao-admin-view'
 
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()
 const viewByLabel=(label:string):View|null=>{const t=label.trim();if(t==='Painel')return'dashboard';if(t==='Sessões'||t==='Consultas')return'sessions';if(t==='Agenda')return'agenda';if(t==='Financeiro'||t==='Pagamentos')return'finance';if(t==='Pacientes')return'patients';return null}
 const labelsByView:Record<View,string[]>={dashboard:['Painel'],sessions:['Sessões','Consultas'],agenda:['Agenda'],finance:['Financeiro','Pagamentos'],patients:['Pacientes']}
+const validViews=(value:string|null):value is View=>!!value&&(['dashboard','sessions','agenda','finance','patients'] as string[]).includes(value)
 
 function sidebar(){return document.querySelector<HTMLElement>('.admin-sidebar')}
 function sidebarButtons(){return [...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')]}
 function buttonFor(view:View){const labels=labelsByView[view];return sidebarButtons().find(b=>labels.includes((b.textContent||'').trim()))||null}
-function desiredView():View{const raw=new URLSearchParams(location.search).get('view');return(['dashboard','sessions','agenda','finance','patients'] as View[]).includes(raw as View)?raw as View:'dashboard'}
+function storedView():View|null{try{const value=sessionStorage.getItem(STORAGE_KEY);return validViews(value)?value:null}catch{return null}}
+function saveStoredView(view:View){try{sessionStorage.setItem(STORAGE_KEY,view)}catch{}}
+function desiredView():View{const raw=new URLSearchParams(location.search).get('view');if(validViews(raw)){saveStoredView(raw);return raw}return storedView()||'dashboard'}
 function patientParam(){const raw=new URLSearchParams(location.search).get('patient');const id=Number(raw||0);return Number.isFinite(id)&&id>0?id:0}
-function writeView(view:View,patientId?:number,replace=false){if(location.pathname.startsWith('/admin/configuracoes/'))return;const url=new URL(location.href);url.pathname='/admin';url.searchParams.set('view',view);if(view==='patients'&&patientId)url.searchParams.set('patient',String(patientId));else url.searchParams.delete('patient');history[replace?'replaceState':'pushState']({},'',url.pathname+url.search+url.hash)}
+function writeView(view:View,patientId?:number,replace=false){if(location.pathname.startsWith('/admin/configuracoes/'))return;saveStoredView(view);const url=new URL(location.href);url.pathname='/admin';url.searchParams.set('view',view);if(view==='patients'&&patientId)url.searchParams.set('patient',String(patientId));else url.searchParams.delete('patient');history[replace?'replaceState':'pushState']({},'',url.pathname+url.search+url.hash)}
 
 async function getPatients(){
   if(patientsCache)return patientsCache
@@ -78,21 +82,22 @@ function restoreFromUrl(){
   if(restoring||location.pathname.startsWith('/admin/configuracoes/'))return
   const side=sidebar();if(!side)return
   const view=desiredView(),button=buttonFor(view);if(!button)return
+  if(button.classList.contains('active')){saveStoredView(view);return}
   restoring=true
-  if(!button.classList.contains('active')||view==='dashboard'||view==='sessions'||view==='finance')button.click()
-  window.setTimeout(()=>{restoring=false;if(view==='patients')void enhancePatientBank()},120)
+  button.click()
+  window.setTimeout(()=>{restoring=false;saveStoredView(view);if(view==='patients')void enhancePatientBank()},160)
 }
 
 function onDocumentClick(event:Event){
   const target=event.target as HTMLElement|null
   const patientLink=target?.closest<HTMLAnchorElement>('.admin-patient-name-link')
-  if(patientLink)return
+  if(patientLink){saveStoredView('patients');return}
   const patientCard=target?.closest<HTMLButtonElement>('.patient-card')
   if(patientCard?.dataset.patientId){writeView('patients',Number(patientCard.dataset.patientId),true);return}
   const navButton=target?.closest<HTMLButtonElement>('.admin-sidebar nav button')
   if(!navButton)return
   const label=(navButton.textContent||'').trim();if(label==='Configurações')return
-  const view=viewByLabel(label);if(view&&!restoring)writeView(view,undefined,false)
+  const view=viewByLabel(label);if(view&&!restoring)writeView(view,undefined,true)
 }
 
 function schedule(delay=60){window.clearTimeout(timer);timer=window.setTimeout(()=>{restoreFromUrl();void enhancePatientBank();void enhanceSessionPatientLinks()},delay)}
@@ -101,9 +106,9 @@ export function installAdminNavigationPatientsEnhancer(){
   if(installed){schedule(0);return}
   installed=true
   document.addEventListener('click',onDocumentClick,true)
-  ;[80,220,500,1000,1800].forEach(ms=>window.setTimeout(()=>schedule(0),ms))
-  const root=document.getElementById('root');if(root)new MutationObserver(()=>schedule(80)).observe(root,{childList:true,subtree:true})
-  window.addEventListener('pageshow',()=>schedule(60));window.addEventListener('popstate',()=>schedule(30))
+  ;[80,220,500,1000].forEach(ms=>window.setTimeout(()=>schedule(0),ms))
+  const root=document.getElementById('root');if(root)new MutationObserver(()=>schedule(100)).observe(root,{childList:true,subtree:true})
+  window.addEventListener('pageshow',()=>schedule(80));window.addEventListener('popstate',()=>schedule(40))
 }
 
 queueMicrotask(()=>installAdminNavigationPatientsEnhancer())
