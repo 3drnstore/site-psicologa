@@ -1,8 +1,9 @@
 import './admin-consultations-v2.css'
+import './admin-navigation-patients-enhancer'
 
 type Appointment={id:number;status:string;starts_at:string;ends_at:string;full_name:string;email:string;phone?:string|null}
 type Filter='confirmed'|'pending_payment'|'cancelled'|'expired'
-const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;' }[c]||c))
 const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(v))
 const tm=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const label=(s:string)=>s==='confirmed'?'Confirmada':s==='pending_payment'?'Pendente':s==='cancelled'?'Cancelada':s==='expired'?'Expirada':s
