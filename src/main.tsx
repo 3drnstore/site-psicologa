@@ -65,7 +65,7 @@ function errorStatus(error: unknown) { return (error as Error & { status?: numbe
 function AdminRouteGate() {
   const [state,setState]=useState<GateState>('checking');const[attempt,setAttempt]=useState(0)
   useEffect(()=>{let active=true;setState('checking');api.adminMe().then(()=>{if(active)setState('authenticated')}).catch(error=>{if(!active)return;setState(errorStatus(error)===401?'anonymous':'unavailable')});return()=>{active=false}},[attempt])
-  if(state==='checking')return <div className="auth-page"><div className="auth-card"><div className="auth-brand"><span className="brand-mark">ψ</span><div><strong>PsicoGestão</strong><small>Painel profissional</small></div></div><h1>Carregando...</h1><p>Restaurando sua sessão e a tela em que você estava.</p></div></div>
+  if(state==='checking')return null
   if(state==='unavailable')return <SessionUnavailable professional onRetry={()=>setAttempt(v=>v+1)}/>
   return <App initialView={state==='authenticated'?'admin':'admin-login'}/>
 }
