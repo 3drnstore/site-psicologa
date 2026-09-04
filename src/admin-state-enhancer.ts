@@ -96,7 +96,6 @@ function dashboardMarkup(appointments:Appointment[],patients:Patient[]){
   const pending=appointments.filter(a=>a.status==='pending_payment')
   const receivedMonth=appointments.filter(a=>a.status==='confirmed'&&a.paid_at&&sameMonth(new Date(a.paid_at),now)).reduce((sum,a)=>sum+Number(a.amount_cents||0),0)
   const upcoming=appointments.filter(a=>a.status==='confirmed'&&new Date(a.starts_at).getTime()>=Date.now()).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime()).slice(0,6)
-  const pendingSoon=[...pending].sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime()).slice(0,5)
 
   return `${quickActions()}
     <section class="admin-kpi-grid" aria-label="Resumo do painel">
@@ -109,10 +108,6 @@ function dashboardMarkup(appointments:Appointment[],patients:Patient[]){
       <article class="admin-dashboard-card">
         <div class="admin-dashboard-card-head"><div><h2>Próximas consultas</h2><span>Agenda confirmada</span></div><span>${upcoming.length} exibida(s)</span></div>
         <div class="admin-dashboard-list">${upcoming.length?upcoming.map(a=>`<div class="admin-dashboard-row"><div class="admin-dashboard-row-main"><strong>${esc(a.full_name)}</strong><span>${esc(dateOnly(a.starts_at))} • ${esc(timeOnly(a.starts_at))}–${esc(timeOnly(a.ends_at))}</span><small>${esc(a.email)}</small></div><div class="admin-dashboard-row-side"><span class="admin-status-chip confirmed">Confirmada</span><strong>${esc(money(a.amount_cents))}</strong></div></div>`).join(''):empty('Nenhuma consulta confirmada futura.')}</div>
-      </article>
-      <article class="admin-dashboard-card">
-        <div class="admin-dashboard-card-head"><div><h2>Pendências</h2><span>Reservas aguardando pagamento</span></div><span>${pending.length}</span></div>
-        <div class="admin-dashboard-list">${pendingSoon.length?pendingSoon.map(a=>`<div class="admin-dashboard-row"><div class="admin-dashboard-row-main"><strong>${esc(a.full_name)}</strong><span>${esc(dateTime(a.starts_at))}</span><small>${esc(paymentMethod(a))}</small></div><div class="admin-dashboard-row-side"><span class="admin-status-chip pending_payment">Pendente</span><strong>${esc(money(a.amount_cents))}</strong></div></div>`).join(''):empty('Nenhum pagamento pendente.')}</div>
       </article>
     </section>`
 }
@@ -153,8 +148,6 @@ async function renderCustom(view:'dashboard'|'consultas'|'pagamentos',sidebar:HT
   main.appendChild(host)
 
   if(view==='consultas'){
-    // The V2 sessions enhancer owns this view. Keeping the legacy table out of the DOM
-    // prevents the old screen from flashing before V2 renders.
     return
   }
 
@@ -220,7 +213,6 @@ export function installAdminStateEnhancer() {
     if (!sidebar.dataset.desktopNavRestored&&!restoring) {
       sidebar.dataset.desktopNavRestored='1'
       restoring=true
-      // The professional area must always start on Painel after entering/reloading.
       localStorage.setItem(STORAGE_KEY,'dashboard')
       window.setTimeout(()=>{
         restoring=false
