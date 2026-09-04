@@ -23,3 +23,5 @@ npm run build
 ```
 
 O diretório de saída é `dist`.
+
+<!-- deploy-trigger: 2026-09-04T15:29-03:00 -->
