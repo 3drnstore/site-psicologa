@@ -1,10 +1,16 @@
 import './session-management-ui.css'
 
-const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]||c))
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
 const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(v))
 const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v))
 const money=(c:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(c)||0)/100)
 async function api(path:string,init?:RequestInit){const r=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível concluir.');return d}
+
+function showPix(result:any){
+  const overlay=document.createElement('div');overlay.className='session-modal-overlay';overlay.innerHTML=`<div class="session-modal pix-modal"><h2>Pagamento por Pix</h2><p>Use o QR Code ou o código copia e cola. A cobrança respeita o prazo da sua reserva recorrente.</p>${result.pix_qr_code?`<img src="${esc(result.pix_qr_code)}" alt="QR Code Pix">`:''}${result.pix_copy_paste?`<label>Pix copia e cola<textarea readonly rows="4">${esc(result.pix_copy_paste)}</textarea></label>`:''}<div><button type="button" data-copy ${result.pix_copy_paste?'':'disabled'}>Copiar código</button><button type="button" data-close>Fechar</button></div></div>`;document.body.appendChild(overlay)
+  overlay.querySelector('[data-close]')?.addEventListener('click',()=>overlay.remove())
+  overlay.querySelector<HTMLButtonElement>('[data-copy]')?.addEventListener('click',async()=>{if(!result.pix_copy_paste)return;await navigator.clipboard.writeText(String(result.pix_copy_paste));alert('Código Pix copiado.')})
+}
 
 let patientBusy=false
 async function enhancePatientSessions(){
@@ -12,7 +18,7 @@ async function enhancePatientSessions(){
   const title=document.querySelector<HTMLElement>('.patient-page-title')
   if(!title||!/^Minhas (consultas|sessões)$/i.test((title.textContent||'').trim()))return
   const panels=[...document.querySelectorAll<HTMLElement>('.patient-section-content .patient-panel')];if(!panels.length)return
-  const first=panels[0];if(first.dataset.sessionManagement==='loading')return
+  const first=panels[0];if(first.dataset.sessionManagement==='loading'||first.dataset.sessionManagement==='1')return
   first.dataset.sessionManagement='loading';patientBusy=true
   try{
     const data=await api('/api/appointments/mine'),all:any[]=data.appointments||[],now=Date.now()
@@ -27,7 +33,7 @@ async function enhancePatientSessions(){
     first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Sessões confirmadas e reservas recorrentes</small></div>${rows||'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
     first.dataset.sessionManagement='1'
     first.querySelectorAll<HTMLButtonElement>('[data-patient-reschedule]').forEach(btn=>btn.addEventListener('click',()=>{sessionStorage.setItem('ps_reschedule_appointment',String(btn.dataset.patientReschedule));document.querySelector<HTMLButtonElement>('[data-patient-tab="agenda"]')?.click()}))
-    first.querySelectorAll<HTMLButtonElement>('[data-rec-pay]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:Number(btn.dataset.id),method:btn.dataset.recPay})});if(r.checkout_url)window.location.href=r.checkout_url;else if(r.pix_qr_code||r.pix_copy_paste){alert('Pix gerado. Abra a Agenda/checkout para visualizar os dados de pagamento.');window.location.reload()}}catch(e){alert(e instanceof Error?e.message:'Não foi possível iniciar o pagamento.')}finally{btn.disabled=false}}))
+    first.querySelectorAll<HTMLButtonElement>('[data-rec-pay]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:Number(btn.dataset.id),method:btn.dataset.recPay})});if(btn.dataset.recPay==='pix'&&(r.pix_qr_code||r.pix_copy_paste))showPix(r);else if(r.checkout_url)window.location.href=r.checkout_url;else alert('Pagamento iniciado. Aguarde a confirmação.')}catch(e){alert(e instanceof Error?e.message:'Não foi possível iniciar o pagamento.')}finally{btn.disabled=false}}))
   }catch{}finally{patientBusy=false}
 }
 
