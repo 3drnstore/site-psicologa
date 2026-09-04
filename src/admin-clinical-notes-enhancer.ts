@@ -31,36 +31,52 @@ async function reloadCurrentPatient(){
   window.location.reload()
 }
 
+function ensureDeleteButtonsVisible(articles:HTMLElement[]){
+  for(const article of articles){
+    if(article.querySelector('[data-delete-clinical-note]'))continue
+    const actions=document.createElement('div')
+    actions.className='clinical-note-actions'
+    actions.innerHTML='<button type="button" data-delete-clinical-note disabled>Excluir anotação</button><small data-note-delete-state style="margin-left:8px;color:#7b8794">Carregando...</small>'
+    article.appendChild(actions)
+  }
+}
+
 async function decorateNotes(){
-  if(decorateBusy)return
   const {panel,email}=currentRecord()
   const list=panel?.querySelector<HTMLElement>('.note-list')
   if(!panel||!list||!email)return
   const articles=[...list.querySelectorAll<HTMLElement>('article')]
   if(!articles.length)return
+  ensureDeleteButtonsVisible(articles)
+  if(decorateBusy)return
   decorateBusy=true
   try{
     const patientId=await currentPatientId(email)
-    if(!patientId)return
+    if(!patientId)throw new Error('Paciente não encontrado.')
     const detail=await api(`/api/admin/patients/${patientId}`)
     const notes:any[]=detail.clinical_notes||[]
     articles.forEach((article,index)=>{
+      const button=article.querySelector<HTMLButtonElement>('[data-delete-clinical-note]')
+      const state=article.querySelector<HTMLElement>('[data-note-delete-state]')
       const note=notes[index]
-      if(!note)return
+      if(!button)return
+      if(!note){button.disabled=true;if(state)state.textContent='Não foi possível identificar esta anotação.';return}
       article.dataset.noteId=String(note.id)
-      if(article.querySelector('[data-delete-clinical-note]'))return
-      const actions=document.createElement('div')
-      actions.className='clinical-note-actions'
-      actions.innerHTML='<button type="button" data-delete-clinical-note>Excluir anotação</button>'
-      article.appendChild(actions)
+      button.disabled=false
+      if(state)state.remove()
     })
-  }catch(error){console.error('Clinical note decoration error',error)}finally{decorateBusy=false}
+  }catch(error){
+    console.error('Clinical note decoration error',error)
+    articles.forEach(article=>{
+      const button=article.querySelector<HTMLButtonElement>('[data-delete-clinical-note]')
+      const state=article.querySelector<HTMLElement>('[data-note-delete-state]')
+      if(button)button.disabled=true
+      if(state)state.textContent=`Erro ao preparar exclusão: ${error instanceof Error?error.message:'erro inesperado'}`
+    })
+  }finally{decorateBusy=false}
 }
 
-function scheduleDecorate(delay=40){
-  window.clearTimeout(scheduled)
-  scheduled=window.setTimeout(()=>void decorateNotes(),delay)
-}
+function scheduleDecorate(delay=40){window.clearTimeout(scheduled);scheduled=window.setTimeout(()=>void decorateNotes(),delay)}
 
 async function saveNote(form:HTMLFormElement){
   if(form.dataset.noteSaving==='1')return
@@ -108,7 +124,7 @@ function installDelete(){
     event.preventDefault();event.stopPropagation();event.stopImmediatePropagation()
     const article=button.closest<HTMLElement>('article[data-note-id]')
     const id=article?.dataset.noteId
-    if(!id)return
+    if(!id){alert('Ainda não foi possível identificar esta anotação. Aguarde alguns segundos e tente novamente.');return}
     if(!window.confirm('Excluir esta anotação clínica? Esta ação não poderá ser desfeita.'))return
     button.disabled=true;button.textContent='Excluindo...'
     void api(`/api/admin/notes/${encodeURIComponent(id)}`,{method:'DELETE'}).then(()=>{
@@ -126,10 +142,13 @@ export function installAdminClinicalNotesEnhancer(){
   if(installed){scheduleDecorate(0);return}
   installed=true
   installSubmitGuard();installDelete()
-  ;[50,150,350,800,1500].forEach(ms=>window.setTimeout(()=>void decorateNotes(),ms))
+  ;[0,50,150,350,800,1500].forEach(ms=>window.setTimeout(()=>void decorateNotes(),ms))
   const root=document.getElementById('root')
   if(root)new MutationObserver(()=>scheduleDecorate(60)).observe(root,{childList:true,subtree:true})
-  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))scheduleDecorate(100)},true)
+  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))scheduleDecorate(80)},true)
   window.addEventListener('pageshow',()=>scheduleDecorate(80))
   window.setInterval(()=>{if(document.querySelector('.record-panel .note-list article'))scheduleDecorate(0)},1200)
 }
+
+// Fallback independente da ordem de inicialização do restante do painel.
+queueMicrotask(()=>installAdminClinicalNotesEnhancer())
