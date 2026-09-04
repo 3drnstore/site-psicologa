@@ -22,6 +22,7 @@ import { installPatientSecurityDeletePolish } from './patient-security-delete-po
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installAdminPatientRecurrenceEnhancer } from './admin-patient-recurrence-enhancer'
 import { installAdminClinicalNotesEnhancer } from './admin-clinical-notes-enhancer'
+import { installAdminPatientWorkspaceEnhancer } from './admin-patient-workspace-enhancer'
 import { installAdminDashboardSessionState } from './admin-dashboard-session-state'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installAdminPlatformPricingEnhancer } from './admin-platform-pricing-enhancer'
@@ -88,6 +89,7 @@ safeInstall('convite da plataforma',installPlatformInviteEnhancer)
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
 
 // Controles críticos do prontuário são iniciados primeiro e isoladamente.
+safeInstall('espaço do paciente',installAdminPatientWorkspaceEnhancer)
 safeInstall('recorrência do paciente',installAdminPatientRecurrenceEnhancer)
 safeInstall('anotações clínicas',installAdminClinicalNotesEnhancer)
 safeInstall('senhas',installPasswordEnhancer)
