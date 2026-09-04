@@ -22,6 +22,7 @@ function validCell(cell:Cell){
   const weekday=s.getUTCDay(),duration=(e.getTime()-s.getTime())/60000
   return weekday>=1&&weekday<=6&&duration===50
 }
+function isPastCell(cell:Cell){return new Date(cell.starts_at).getTime()<Date.now()}
 
 export async function handleAgendaBulk(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path!=='/api/admin/availability/bulk'||request.method!=='POST')return null
@@ -31,6 +32,7 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   const cells=(Array.isArray(body.cells)?body.cells:[]).slice(0,200).map((c:any)=>({starts_at:String(c.starts_at||''),ends_at:String(c.ends_at||'')})) as Cell[]
   if(!['free','occupied','blocked','delete'].includes(mode)||!cells.length)return json({ok:false,message:'Selecione pelo menos um horário e escolha uma ação.'},400)
   if(cells.some(c=>!validCell(c)))return json({ok:false,message:'A grade aceita sessões de 50 minutos, de segunda a sábado.'},400)
+  if(cells.some(isPastCell))return json({ok:false,message:'Horários passados são somente para consulta e não podem ser alterados.'},409)
 
   const minStart=cells.reduce((a,c)=>c.starts_at<a?c.starts_at:a,cells[0].starts_at)
   const maxEnd=cells.reduce((a,c)=>c.ends_at>a?c.ends_at:a,cells[0].ends_at)
@@ -72,5 +74,5 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
 
   if(statements.length)await env.DB.batch(statements)
   const changed=changedCells.length
-  return json({ok:true,changed,skipped,changed_cells:changedCells,message:skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou consulta confirmada.`:`${changed} horário(s) alterado(s).`})
+  return json({ok:true,changed,skipped,changed_cells:changedCells,message:skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou sessão confirmada.`:`${changed} horário(s) alterado(s).`})
 }
