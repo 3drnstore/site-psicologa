@@ -1,4 +1,4 @@
-const esc=(v:unknown)=>String(v??'')
+import './admin-clinical-notes-enhancer.css'
 
 async function api(path:string,init?:RequestInit){
   const response=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
