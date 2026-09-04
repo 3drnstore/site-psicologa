@@ -1,0 +1,1 @@
+Fix admin refresh persistence by restoring the saved/query view instead of forcing dashboard.
