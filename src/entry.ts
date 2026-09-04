@@ -24,6 +24,7 @@ import { ensureSchemaReady } from './schema-bootstrap'
 import { handleSessionManagement, runScheduledSessionTasks } from './session-management'
 import { handleRecurringCheckout } from './recurring-checkout'
 import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile'
+import { handleClinicalApi } from './clinical-api'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -42,7 +43,8 @@ function withSecurityHeaders(response: Response, path: string) {
   headers.set('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://graph.facebook.com; upgrade-insecure-requests")
 
   const privateRoute = path === '/admin' || path.startsWith('/admin/') || path === '/paciente' || path.startsWith('/paciente/') || path === '/recuperar-senha' || path === '/status' || path === '/status/'
-  if (privateRoute) { headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); headers.set('Cache-Control', 'private, no-store') }
+  const clinicalApi = /^\/api\/admin\/(?:patients\/\d+(?:\/notes)?|notes\/)/.test(path)
+  if (privateRoute || clinicalApi) { headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); headers.set('Cache-Control', 'private, no-store'); headers.set('Pragma', 'no-cache') }
   else if (path === '/api/health') headers.set('Cache-Control', 'no-store')
   else if (path.startsWith('/assets/')) headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   else if (path === '/favicon.svg' || path === '/site.webmanifest') headers.set('Cache-Control', 'public, max-age=86400')
@@ -83,6 +85,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const sessionManagement = await handleSessionManagement(request, env, path)
   if (sessionManagement) return sessionManagement
 
+  const clinicalResponse = await handleClinicalApi(request, env, path); if (clinicalResponse) return clinicalResponse
   if (path === '/api/admin/patients' || /^\/api\/admin\/patients\/\d+$/.test(path)) { const response = await handleAdminPatientsV2(request, env, path); if (response) return response }
   if (path === '/api/admin/settings') { const response = await handlePricingV2(request, env, path); if (response) return response }
 
