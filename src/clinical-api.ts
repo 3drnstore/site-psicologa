@@ -1,5 +1,4 @@
 import { readAdminSession } from './admin-session-reader'
-import { decryptClinicalNote, encryptClinicalNote } from './clinical-crypto'
 import { ensureClinicalEncryptionSchema } from './clinical-schema'
 import type { Env } from './types'
 
@@ -17,24 +16,33 @@ async function psychologist(request:Request,env:Env){
   return {admin} as const
 }
 
-async function decryptRows(rows:any[],env:Env){
-  const out=[]
-  for(const row of rows){
-    if(!row.note_ciphertext||!row.note_iv||!row.wrapped_dek||!row.wrap_iv||!row.encryption_version)continue
-    const note_text=await decryptClinicalNote({note_ciphertext:String(row.note_ciphertext),note_iv:String(row.note_iv),wrapped_dek:String(row.wrapped_dek),wrap_iv:String(row.wrap_iv),encryption_version:String(row.encryption_version)},env)
-    out.push({id:row.id,appointment_id:row.appointment_id,session_date:row.session_date,note_text,created_at:row.created_at,updated_at:row.updated_at})
-  }
-  return out
-}
+function validEnvelope(data:any){return ['note_ciphertext','note_iv','wrapped_dek','wrap_iv','encryption_version'].every(k=>typeof data?.[k]==='string'&&data[k].length>0)}
 
 export async function handleClinicalApi(request:Request,env:Env,path:string):Promise<Response|null>{
   const isDetail=/^\/api\/admin\/patients\/\d+$/.test(path)&&request.method==='GET'
   const isCreate=/^\/api\/admin\/patients\/\d+\/notes$/.test(path)&&request.method==='POST'
   const isDelete=/^\/api\/admin\/notes\/[^/]+$/.test(path)&&request.method==='DELETE'
-  if(!isDetail&&!isCreate&&!isDelete)return null
+  const isVault=path==='/api/admin/clinical-vault'&&(request.method==='GET'||request.method==='POST')
+  if(!isDetail&&!isCreate&&!isDelete&&!isVault)return null
 
   const auth=await psychologist(request,env);if('error'in auth)return auth.error
   await ensureClinicalEncryptionSchema(env)
+
+  if(isVault&&request.method==='GET'){
+    const row=await env.DB.prepare('SELECT wrapped_vault_key,wrap_iv,kdf_salt,kdf_iterations,version FROM clinical_vaults WHERE admin_user_id=?').bind(auth.admin.id).first<any>()
+    return row?json({configured:true,...row}):json({configured:false})
+  }
+
+  if(isVault&&request.method==='POST'){
+    const data=await request.json().catch(()=>({})) as any
+    if(!data.wrapped_vault_key||!data.wrap_iv||!data.kdf_salt||!Number(data.kdf_iterations)||!data.version)return json({ok:false,message:'Configuração do cofre inválida.'},400)
+    const existing=await env.DB.prepare('SELECT admin_user_id FROM clinical_vaults WHERE admin_user_id=?').bind(auth.admin.id).first<any>()
+    if(existing)return json({ok:false,message:'O cofre clínico já foi configurado.'},409)
+    await env.DB.prepare('INSERT INTO clinical_vaults(admin_user_id,wrapped_vault_key,wrap_iv,kdf_salt,kdf_iterations,version) VALUES(?,?,?,?,?,?)')
+      .bind(auth.admin.id,String(data.wrapped_vault_key),String(data.wrap_iv),String(data.kdf_salt),Number(data.kdf_iterations),String(data.version)).run()
+    await audit(env,auth.admin.id,'clinical_vault_created',auth.admin.id,{version:String(data.version)})
+    return json({ok:true},201)
+  }
 
   if(isDetail){
     const patientId=Number(path.split('/')[4])
@@ -43,21 +51,19 @@ export async function handleClinicalApi(request:Request,env:Env,path:string):Pro
     const appointments=await env.DB.prepare('SELECT a.id,a.status,a.amount_cents,a.paid_at,av.starts_at,av.ends_at FROM appointments a LEFT JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? ORDER BY av.starts_at DESC').bind(patientId).all<any>()
     const encrypted=await env.DB.prepare('SELECT id,appointment_id,session_date,note_ciphertext,note_iv,wrapped_dek,wrap_iv,encryption_version,created_at,updated_at FROM clinical_notes WHERE patient_id=? ORDER BY session_date DESC,created_at DESC').bind(patientId).all<any>()
     const recurrence=await env.DB.prepare('SELECT id,patient_id,cadence_days,active,source_appointment_id,created_at,updated_at FROM patient_recurrence WHERE patient_id=? LIMIT 1').bind(patientId).first<any>().catch(()=>null)
-    const clinical_notes=await decryptRows(encrypted.results||[],env)
-    return json({ok:true,patient,appointments:appointments.results||[],clinical_notes,recurrence})
+    return json({ok:true,patient,appointments:appointments.results||[],clinical_notes:encrypted.results||[],recurrence})
   }
 
   if(isCreate){
-    const patientId=Number(path.split('/')[4])
-    const data=await request.json().catch(()=>({})) as any
-    const noteText=String(data.note_text||'').trim(),sessionDate=String(data.session_date||'').trim(),appointmentId=data.appointment_id?Number(data.appointment_id):null
-    if(!noteText||!sessionDate)return json({ok:false,message:'Informe data da sessão e anotação.'},400)
+    const patientId=Number(path.split('/')[4]),data=await request.json().catch(()=>({})) as any
+    const sessionDate=String(data.session_date||'').trim(),appointmentId=data.appointment_id?Number(data.appointment_id):null
+    if(!sessionDate||!validEnvelope(data)||data.encryption_version!=='e2e-aes-256-gcm-v1')return json({ok:false,message:'Payload clínico criptografado inválido.'},400)
     const patient=await env.DB.prepare('SELECT id FROM patients WHERE id=?').bind(patientId).first<any>()
     if(!patient)return json({ok:false,message:'Paciente não encontrado.'},404)
-    const id=crypto.randomUUID(),envelope=await encryptClinicalNote(noteText,env)
+    const id=crypto.randomUUID()
     await env.DB.prepare('INSERT INTO clinical_notes(id,patient_id,appointment_id,author_admin_id,session_date,note_text,note_ciphertext,note_iv,wrapped_dek,wrap_iv,encryption_version) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(id,patientId,appointmentId,auth.admin.id,sessionDate,'',envelope.note_ciphertext,envelope.note_iv,envelope.wrapped_dek,envelope.wrap_iv,envelope.encryption_version).run()
-    await audit(env,auth.admin.id,'clinical_note_created',id,{patient_id:patientId,appointment_id:appointmentId,encryption_version:envelope.encryption_version})
+      .bind(id,patientId,appointmentId,auth.admin.id,sessionDate,'',data.note_ciphertext,data.note_iv,data.wrapped_dek,data.wrap_iv,data.encryption_version).run()
+    await audit(env,auth.admin.id,'clinical_note_created',id,{patient_id:patientId,appointment_id:appointmentId,encryption_version:data.encryption_version})
     return json({ok:true,id},201)
   }
 
