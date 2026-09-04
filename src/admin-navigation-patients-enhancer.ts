@@ -1,7 +1,7 @@
 import './admin-navigation-patients-enhancer.css'
 
 type Patient={id:number;full_name:string;email:string;phone?:string|null}
-type View='dashboard'|'sessions'|'agenda'|'finance'|'patients'
+type View='dashboard'|'sessions'|'agenda'|'finance'|'patients'|'messages'
 
 let installed=false
 let patientsCache:Patient[]|null=null
@@ -11,9 +11,9 @@ let restoring=false
 const STORAGE_KEY='psicogestao-admin-view'
 
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()
-const viewByLabel=(label:string):View|null=>{const t=label.trim();if(t==='Painel')return'dashboard';if(t==='Sessões'||t==='Consultas')return'sessions';if(t==='Agenda')return'agenda';if(t==='Financeiro'||t==='Pagamentos')return'finance';if(t==='Pacientes')return'patients';return null}
-const labelsByView:Record<View,string[]>={dashboard:['Painel'],sessions:['Sessões','Consultas'],agenda:['Agenda'],finance:['Financeiro','Pagamentos'],patients:['Pacientes']}
-const validViews=(value:string|null):value is View=>!!value&&(['dashboard','sessions','agenda','finance','patients'] as string[]).includes(value)
+const viewByLabel=(label:string):View|null=>{const t=label.trim();if(t==='Painel')return'dashboard';if(t==='Sessões'||t==='Consultas')return'sessions';if(t==='Agenda')return'agenda';if(t==='Financeiro'||t==='Pagamentos')return'finance';if(t==='Pacientes')return'patients';if(t==='Mensagens')return'messages';return null}
+const labelsByView:Record<View,string[]>={dashboard:['Painel'],sessions:['Sessões','Consultas'],agenda:['Agenda'],finance:['Financeiro','Pagamentos'],patients:['Pacientes'],messages:['Mensagens']}
+const validViews=(value:string|null):value is View=>!!value&&(['dashboard','sessions','agenda','finance','patients','messages'] as string[]).includes(value)
 
 function sidebar(){return document.querySelector<HTMLElement>('.admin-sidebar')}
 function sidebarButtons(){return [...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')]}
@@ -85,6 +85,7 @@ function contentMatches(view:View){
   if(view==='dashboard')return custom&&customMode&&title==='Visão geral'
   if(view==='sessions')return custom&&customMode&&['Sessões','Consultas'].includes(title)
   if(view==='finance')return custom&&customMode&&['Financeiro','Pagamentos'].includes(title)
+  if(view==='messages')return custom&&customMode&&title==='Mensagens'&&Boolean(document.querySelector('.admin-messages-view'))
   if(view==='agenda')return !custom&&!customMode&&title==='Agenda'
   if(view==='patients')return !custom&&!customMode&&title.startsWith('Pacientes')
   return false
