@@ -7,13 +7,39 @@ async function getJson(path:string,init?:RequestInit){const r=await fetch(path,{
 let installed=false
 let busy=false
 let scheduled=0
+const globalState=window as any
+
+function installPatientIdCapture(){
+  if(globalState.__psAdminPatientIdCaptureInstalled)return
+  globalState.__psAdminPatientIdCaptureInstalled=true
+  const previousFetch=window.fetch.bind(window)
+  window.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
+    try{
+      const raw=typeof input==='string'?input:input instanceof URL?input.toString():input.url
+      const url=new URL(raw,window.location.origin)
+      const method=String(init?.method||(input instanceof Request?input.method:'GET')).toUpperCase()
+      const match=url.pathname.match(/^\/api\/admin\/patients\/(\d+)$/)
+      if(method==='GET'&&match){
+        globalState.__psSelectedAdminPatientId=Number(match[1])
+        queueMicrotask(()=>{
+          const panel=document.querySelector<HTMLElement>('.record-panel')
+          if(panel)panel.dataset.patientId=match[1]
+        })
+      }
+    }catch{}
+    return previousFetch(input as any,init)
+  }) as typeof window.fetch
+}
 
 function selectedPatientEmail(panel:HTMLElement){
   const head=panel.querySelector<HTMLElement>('.record-head')
-  const fromHead=(head?.textContent||'').match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0]
-  if(fromHead)return fromHead
-  const active=document.querySelector<HTMLElement>('.patient-card.active')
-  return (active?.textContent||'').match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0]||''
+  return (head?.textContent||'').match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0]||''
+}
+
+function selectedPatientId(panel:HTMLElement){
+  const globalId=Number(globalState.__psSelectedAdminPatientId||0)
+  const panelId=Number(panel.dataset.patientId||0)
+  return globalId||panelId||0
 }
 
 function ensureVisibleBox(panel:HTMLElement,head:HTMLElement,email:string){
@@ -43,11 +69,11 @@ async function enhance(){
   try{
     status.classList.remove('error')
     status.textContent='Carregando configuração de recorrência...'
-    const list=await getJson('/api/admin/patients')
-    const patient=(list.patients||[]).find((p:any)=>String(p.email||'').toLowerCase()===email.toLowerCase())
-    if(!patient)throw new Error('Paciente não encontrado para configurar recorrência.')
-    const detail=await getJson(`/api/admin/patients/${patient.id}`)
-    if(!panel.isConnected||selectedPatientEmail(panel).toLowerCase()!==email.toLowerCase())return
+    const patientId=selectedPatientId(panel)
+    if(!patientId)throw new Error('Não foi possível identificar o paciente selecionado. Clique novamente no paciente da lista.')
+    panel.dataset.patientId=String(patientId)
+    const detail=await getJson(`/api/admin/patients/${patientId}`)
+    if(!panel.isConnected||selectedPatientId(panel)!==patientId)return
     const confirmed=(detail.appointments||[]).filter((a:any)=>a.status==='confirmed'&&a.starts_at).sort((a:any,b:any)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
     const rec=detail.recurrence
     const cadence=box.querySelector<HTMLSelectElement>('[data-rec-cadence]')!
@@ -68,12 +94,12 @@ async function enhance(){
       save.disabled=true;status.classList.remove('error');status.textContent='Salvando...'
       try{
         if(cadence.value==='0'){
-          await getJson(`/api/admin/patients/${patient.id}/recurrence`,{method:'DELETE'})
+          await getJson(`/api/admin/patients/${patientId}/recurrence`,{method:'DELETE'})
           status.textContent='Recorrência desativada.'
           heading.querySelector('.patient-recurrence-badge')?.remove()
         }else{
           if(!source.value)throw new Error('Selecione uma sessão confirmada como referência.')
-          await getJson(`/api/admin/patients/${patient.id}/recurrence`,{method:'PUT',body:JSON.stringify({cadence_days:Number(cadence.value),source_appointment_id:Number(source.value)})})
+          await getJson(`/api/admin/patients/${patientId}/recurrence`,{method:'PUT',body:JSON.stringify({cadence_days:Number(cadence.value),source_appointment_id:Number(source.value)})})
           status.textContent=cadence.value==='7'?'Paciente configurado como semanal. A próxima reserva será criada automaticamente.':'Paciente configurado como quinzenal. A próxima reserva será criada automaticamente.'
           let badge=heading.querySelector<HTMLElement>('.patient-recurrence-badge')
           if(!badge){badge=document.createElement('span');badge.className='patient-recurrence-badge';heading.appendChild(badge)}
@@ -87,7 +113,7 @@ async function enhance(){
   }catch(error){
     console.error('Recurrence UI error',error)
     status.classList.add('error')
-    status.textContent=`Não foi possível carregar a recorrência: ${error instanceof Error?error.message:'erro inesperado'}. O controle permanecerá visível e tentará novamente.`
+    status.textContent=`Não foi possível carregar a recorrência: ${error instanceof Error?error.message:'erro inesperado'}`
     box.dataset.ready='0'
   }finally{busy=false}
 }
@@ -95,15 +121,15 @@ async function enhance(){
 function schedule(delay=40){window.clearTimeout(scheduled);scheduled=window.setTimeout(()=>void enhance(),delay)}
 
 export function installAdminPatientRecurrenceEnhancer(){
+  installPatientIdCapture()
   if(installed){schedule(0);return}
   installed=true
   ;[0,50,150,300,700,1400].forEach(ms=>window.setTimeout(()=>void enhance(),ms))
   const root=document.getElementById('root')
   if(root)new MutationObserver(()=>schedule(60)).observe(root,{childList:true,subtree:true})
-  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))schedule(80)},true)
+  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))schedule(120)},true)
   window.addEventListener('pageshow',()=>schedule(80))
   window.setInterval(()=>{if(document.querySelector('.record-panel .record-head'))schedule(0)},1200)
 }
 
-// Fallback independente da ordem de inicialização do restante do painel.
 queueMicrotask(()=>installAdminPatientRecurrenceEnhancer())
