@@ -28,7 +28,7 @@ function menuLabelForTitle(title:string){
   if(title==='Financeiro'||title==='Pagamentos')return 'Financeiro'
   if(title==='Pacientes e prontuários'||title==='Pacientes')return 'Pacientes'
   if(title==='Mensagens')return 'Mensagens'
-  if(title==='Configurações'||title==='Segurança'||title==='Gestão de usuários')return 'Configurações'
+  if(title==='Configurações'||title==='Tabelas de Preços'||title==='Segurança'||title==='Gestão de usuários')return 'Configurações'
   return ''
 }
 function normalizeSidebarActive(){
@@ -50,16 +50,6 @@ function bindSingleActiveNavigation(){
       else normalizeSidebarActive()
     },ms))
   },true)
-}
-let initialPanelApplied=false
-function forceInitialPanel(){
-  if(initialPanelApplied)return
-  const sidebar=document.querySelector<HTMLElement>('.admin-sidebar');if(!sidebar)return
-  const painel=[...sidebar.querySelectorAll<HTMLButtonElement>('nav button')].find(button=>(button.textContent||'').trim()==='Painel');if(!painel)return
-  initialPanelApplied=true
-  localStorage.setItem('psicogestao.admin.view','dashboard')
-  painel.click()
-  ;[0,80,220].forEach(ms=>window.setTimeout(normalizeSidebarActive,ms))
 }
 
 async function renderMessages(button:HTMLButtonElement){
@@ -84,6 +74,5 @@ export function installAdminMessagesEnhancer(){
   installAdminConsultationsV2();installAdminClinicalExport();installAdminFinanceEnhancer()
   const apply=()=>{bindMessages();bindSingleActiveNavigation();cleanupCustomViews();normalizeSidebarActive()}
   ;[0,100,300,700].forEach(ms=>setTimeout(apply,ms))
-  ;[170,350].forEach(ms=>setTimeout(forceInitialPanel,ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>apply()).observe(root,{childList:true,subtree:true})
 }
