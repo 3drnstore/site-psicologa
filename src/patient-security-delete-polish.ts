@@ -7,20 +7,7 @@ async function request(path:string,init?:RequestInit){
   return data
 }
 
-function syncDeleteAccount(){
-  const host=document.querySelector<HTMLElement>('.patient-stable-view')
-  if(!host)return
-  const title=host.querySelector<HTMLElement>('.patient-page-title')?.textContent?.trim()||''
-
-  if(title==='Meus dados'){
-    host.querySelectorAll<HTMLElement>('.patient-danger-zone').forEach(section=>section.remove())
-    return
-  }
-
-  if(title!=='Segurança')return
-  const content=host.querySelector<HTMLElement>('.patient-section-content')
-  if(!content||content.querySelector('.patient-security-delete-zone'))return
-
+function buildDeleteSection(){
   const section=document.createElement('section')
   section.className='patient-panel patient-danger-zone patient-security-delete-zone'
   section.innerHTML=`
@@ -31,7 +18,28 @@ function syncDeleteAccount(){
       <button type="submit" class="patient-danger-button">Excluir minha conta</button>
       <div class="patient-action-message" aria-live="polite"></div>
     </form>`
-  content.appendChild(section)
+  return section
+}
+
+function syncDeleteAccount(){
+  const host=document.querySelector<HTMLElement>('.patient-stable-view')
+  if(!host)return false
+  const title=(host.querySelector<HTMLElement>('.patient-page-title')?.textContent||'').trim()
+
+  if(title==='Meus dados'){
+    host.querySelectorAll<HTMLElement>('.patient-danger-zone').forEach(section=>section.remove())
+    return true
+  }
+
+  if(title!=='Segurança')return false
+  const content=host.querySelector<HTMLElement>('.patient-section-content')
+  if(!content)return false
+  if(!content.querySelector('.patient-security-delete-zone'))content.appendChild(buildDeleteSection())
+  return true
+}
+
+function forceSync(){
+  ;[0,30,80,160,300,600].forEach(delay=>window.setTimeout(syncDeleteAccount,delay))
 }
 
 export function installPatientSecurityDeletePolish(){
@@ -55,16 +63,20 @@ export function installPatientSecurityDeletePolish(){
       .catch(error=>{if(message)message.textContent=error instanceof Error?error.message:'Não foi possível excluir a conta.'})
   },true)
 
-  const schedule=()=>window.setTimeout(syncDeleteAccount,0)
-  const hostObserver=new MutationObserver(schedule)
-  const observe=()=>{
-    const host=document.querySelector('.patient-stable-view')
-    if(host){hostObserver.disconnect();hostObserver.observe(host,{childList:true,subtree:true});syncDeleteAccount()}
-  }
-  observe()
   document.addEventListener('click',event=>{
-    const tab=(event.target as HTMLElement|null)?.closest('[data-patient-tab]')
-    if(tab)window.setTimeout(()=>{observe();syncDeleteAccount()},100)
+    const tab=(event.target as HTMLElement|null)?.closest<HTMLElement>('[data-patient-tab]')
+    if(tab)forceSync()
   },true)
-  window.addEventListener('pageshow',()=>window.setTimeout(observe,100))
+
+  const observer=new MutationObserver(()=>forceSync())
+  const startObserver=()=>{
+    const host=document.querySelector('.patient-stable-view')
+    if(!host)return
+    observer.disconnect()
+    observer.observe(host,{childList:true,subtree:true})
+    forceSync()
+  }
+
+  ;[0,80,200,500].forEach(delay=>window.setTimeout(startObserver,delay))
+  window.addEventListener('pageshow',()=>{startObserver();forceSync()})
 }
