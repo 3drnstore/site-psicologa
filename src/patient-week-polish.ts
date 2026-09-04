@@ -6,6 +6,10 @@ const mondayOf=(value:Date)=>{const d=new Date(value);d.setHours(0,0,0,0);const 
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
 const ymd=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 const ddmm=(d:Date)=>`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
+const weekday=(d:Date)=>{
+  const raw=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(d).replace('-feira','')
+  return raw.charAt(0).toUpperCase()+raw.slice(1)
+}
 
 function updateChosenDate(button:HTMLButtonElement){
   const day=button.closest<HTMLElement>('.patient-week-day')
@@ -17,8 +21,8 @@ function updateChosenDate(button:HTMLButtonElement){
   window.setTimeout(()=>{
     const choice=document.querySelector<HTMLElement>('.patient-booking-choice')
     if(!choice)return
-    const time=choice.querySelector('strong')?.textContent||button.querySelector('span')?.textContent||'Selecione um horário'
-    choice.innerHTML=`<div><small>Horário escolhido</small><strong>${time}</strong></div><div><small>Data escolhida</small><strong>${ddmm(date)}</strong></div>`
+    const time=button.querySelector('span')?.textContent||choice.querySelector('strong')?.textContent||'Selecione um horário'
+    choice.innerHTML=`<div><small>Data escolhida:</small><strong>${weekday(date)}, ${ddmm(date)}</strong></div><div><small>Horário escolhido:</small><strong>${time}</strong></div>`
   },0)
 }
 
@@ -79,6 +83,5 @@ export function installPatientWeekPolish(){
   document.addEventListener('click',event=>{
     const tab=(event.target as HTMLElement|null)?.closest<HTMLButtonElement>('[data-patient-tab="agenda"]')
     if(!tab)return
-    // Mantém o deslocamento da sessão; um reload sempre começa na semana atual.
   },true)
 }
