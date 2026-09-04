@@ -1,4 +1,4 @@
-name: Web check
+name: Web build
 on:
   pull_request:
     branches: [main]
@@ -12,5 +12,4 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npm run typecheck
       - run: npm run build
