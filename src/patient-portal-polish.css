@@ -6,6 +6,12 @@
 .patient-booking-choice small{font-size:11px;color:#7b8076}
 .patient-booking-choice strong{font-size:13px;color:#354a43}
 
+/* Mesma família tipográfica da marca PsicoGestão usada no acesso administrativo */
+.patient-sidebar-brand>strong::after{
+  font-family:Georgia,"Times New Roman",serif!important;
+  font-weight:400!important;
+}
+
 /* O botão de mostrar/ocultar senha deve ser transparente no portal do paciente */
 .patient-stable-view .password-toggle-dom{
   background:transparent!important;
