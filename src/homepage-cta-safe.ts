@@ -27,16 +27,26 @@ function applyHomepageCta() {
       <div class="conversation-cta-inner">
         <h2>Vamos conversar</h2>
         <p>O primeiro passo para iniciar a psicoterapia é conversar. Vamos encontrar um momento em que possamos nos encontrar e conversar sobre o que está em sua mente.</p>
-        <button type="button" class="primary-button large conversation-booking-button">Agendar consulta</button>
+        <button type="button" class="primary-button large conversation-booking-button">Agendar sessão</button>
       </div>
     `
     if (contact) main.insertBefore(section, contact)
     else faq.insertAdjacentElement('afterend', section)
+  }
 
-    section.querySelector<HTMLButtonElement>('.conversation-booking-button')?.addEventListener('click', () => {
+  const bookingButton = section.querySelector<HTMLButtonElement>('.conversation-booking-button')
+  if (bookingButton && bookingButton.dataset.bound !== '1') {
+    bookingButton.dataset.bound = '1'
+    bookingButton.addEventListener('click', () => {
       const headerButton = [...shell.querySelectorAll<HTMLButtonElement>('.site-header button')]
-        .find(button => (button.textContent || '').trim() === 'Agendar consulta')
-      headerButton?.click()
+        .find(button => /^Agendar\s+(consulta|sessão)$/i.test((button.textContent || '').trim()))
+      if (headerButton) {
+        headerButton.click()
+        return
+      }
+      const patientButton = [...shell.querySelectorAll<HTMLButtonElement>('.site-header button')]
+        .find(button => (button.textContent || '').trim() === 'Área do paciente')
+      patientButton?.click()
     })
   }
 
