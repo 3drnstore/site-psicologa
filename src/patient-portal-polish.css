@@ -6,22 +6,16 @@
 .patient-booking-choice small{font-size:11px;color:#7b8076}
 .patient-booking-choice strong{font-size:13px;color:#354a43}
 
-/* O botão de mostrar/ocultar senha não deve herdar o verde dos botões de ação */
-.patient-stable-view .password-toggle,
-.patient-stable-view button.password-toggle,
-.patient-stable-view [data-password-toggle],
-.patient-stable-view .password-field button,
-.patient-stable-view label:has(input[type="password"]) button{
+/* O botão de mostrar/ocultar senha deve ser transparente no portal do paciente */
+.patient-stable-view .password-toggle-dom{
   background:transparent!important;
   color:#5f8178!important;
   border:0!important;
   box-shadow:none!important;
 }
-.patient-stable-view .password-toggle:hover,
-.patient-stable-view button.password-toggle:hover,
-.patient-stable-view [data-password-toggle]:hover,
-.patient-stable-view .password-field button:hover,
-.patient-stable-view label:has(input[type="password"]) button:hover{
+.patient-stable-view .password-toggle-dom:hover,
+.patient-stable-view .password-toggle-dom:focus{
   background:transparent!important;
+  box-shadow:none!important;
 }
 @media(max-width:760px){.patient-booking-choice{grid-template-columns:1fr}}
