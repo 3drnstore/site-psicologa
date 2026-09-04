@@ -1,3 +1,6 @@
+import { installAdminPatientRecurrenceEnhancer } from './admin-patient-recurrence-enhancer'
+import { installAdminClinicalNotesEnhancer } from './admin-clinical-notes-enhancer'
+
 let installed=false
 
 function enhancePasswords(){
@@ -25,6 +28,10 @@ function scheduleBurst(){
 export function installPasswordEnhancer(){
   if(installed)return
   installed=true
+  // Estes controles do prontuário são críticos e não podem depender da ordem
+  // dos demais enhancers da interface administrativa.
+  installAdminPatientRecurrenceEnhancer()
+  installAdminClinicalNotesEnhancer()
   scheduleBurst()
   document.addEventListener('click',()=>{
     window.setTimeout(enhancePasswords,0)
