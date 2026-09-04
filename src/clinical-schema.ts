@@ -21,15 +21,20 @@ export async function ensureClinicalEncryptionSchema(env:Env){
     version TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS clinical_crypto_meta(
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );`)
 
   const marker='clinical_e2e_v1_initialized'
-  const initialized=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(marker).first<any>()
+  const initialized=await env.DB.prepare('SELECT value FROM clinical_crypto_meta WHERE key=?').bind(marker).first<any>()
   if(!initialized){
     // Dados clínicos anteriores eram apenas testes e foram autorizados para exclusão.
     await env.DB.batch([
       env.DB.prepare('DELETE FROM clinical_notes'),
-      env.DB.prepare("INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?, '1', CURRENT_TIMESTAMP)").bind(marker),
+      env.DB.prepare("INSERT OR REPLACE INTO clinical_crypto_meta(key,value,updated_at) VALUES(?, '1', CURRENT_TIMESTAMP)").bind(marker),
     ])
   }
   ready=true
