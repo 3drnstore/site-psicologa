@@ -1,6 +1,7 @@
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
-const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v))
+const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(v))
 const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(v))
+const timeOnly=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 const money=(c:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(c)||0)/100)
 
 async function api(path:string,init?:RequestInit){
@@ -82,28 +83,39 @@ function patchRescheduleAgenda(){
   if(button)button.textContent='Confirmar reagendamento'
 }
 
+function sessionRow(a:any,now:number){
+  if(a.status==='pending_payment'&&a.reservation_kind==='recurring'){
+    return `<article class="patient-consult-row patient-consult-row-recurring"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>Reserva recorrente · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
+  }
+  const awaiting=a.workflow_state==='awaiting_reschedule'
+  const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-now>=24*3600000
+  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
+}
+
 let sessionRenderBusy=false
 async function renderReliablePatientSessions(){
   if(sessionRenderBusy)return
   const title=document.querySelector<HTMLElement>('.patient-page-title')
   if(!title||!/^Minhas (consultas|sessões)$/i.test((title.textContent||'').trim()))return
-  const first=document.querySelector<HTMLElement>('.patient-section-content .patient-panel')
+  const panels=[...document.querySelectorAll<HTMLElement>('.patient-section-content .patient-panel')]
+  const first=panels[0],historyPanel=panels[1]
   if(!first)return
   sessionRenderBusy=true
   try{
     const data=await api('/api/appointments/mine'),all:any[]=data.appointments||[],now=Date.now()
     const future=all.filter(a=>new Date(a.ends_at||a.starts_at).getTime()>=now&&['confirmed','pending_payment'].includes(a.status)).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime())
+    const history=all.filter(a=>a.status==='confirmed'&&new Date(a.ends_at||a.starts_at).getTime()<now).sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
     const key=JSON.stringify(future.map(a=>[a.id,a.status,a.workflow_state,a.reservation_kind,a.starts_at,a.payment_deadline_at,a.reserved_until]))
-    if(first.dataset.patientFlowKey===key&&first.querySelector('[data-patient-flow-render]'))return
-    const rows=future.map(a=>{
-      if(a.status==='pending_payment'&&a.reservation_kind==='recurring')return `<article class="patient-session-manage-row recurring"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>Reserva recorrente</span><small>Pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-session-actions"><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
-      const awaiting=a.workflow_state==='awaiting_reschedule'
-      const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-now>=24*3600000
-      return `<article class="patient-session-manage-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${awaiting?'Aguardando reagendamento pela profissional':'Confirmada'}</span>${awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':''}</div><div class="patient-session-actions">${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:!awaiting?'<small>Reagendamento online disponível até 24h antes.</small>':''}</div></article>`
-    }).join('')
-    first.dataset.patientFlowKey=key
-    first.innerHTML=`<div data-patient-flow-render><div class="patient-panel-head"><strong>Próxima sessão</strong><small>Sessões confirmadas e reservas recorrentes</small></div>${rows||'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}</div>`
-    first.querySelectorAll<HTMLButtonElement>('[data-patient-reschedule]').forEach(btn=>btn.addEventListener('click',()=>{sessionStorage.setItem('ps_reschedule_appointment',String(btn.dataset.patientReschedule));document.querySelector<HTMLButtonElement>('[data-patient-tab="agenda"]')?.click()}))
+    if(first.dataset.patientFlowKey!==key||first.dataset.finalPatientSessions!=='1'){
+      first.dataset.patientFlowKey=key
+      first.dataset.finalPatientSessions='1'
+      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Sessões confirmadas após pagamento</small></div>${future.length?future.map(a=>sessionRow(a,now)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
+    }
+    if(historyPanel&&historyPanel.dataset.finalPatientHistory!=='1'){
+      historyPanel.dataset.finalPatientHistory='1'
+      historyPanel.innerHTML=`<div class="patient-panel-head"><strong>Histórico</strong><small>Sessões anteriores confirmadas</small></div>${history.length?history.map(a=>`<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span></div><div class="patient-consult-actions"><span class="patient-consult-status confirmed">Confirmada</span></div></article>`).join(''):'<p class="patient-empty">Ainda não há sessões anteriores no seu histórico.</p>'}`
+    }
+    first.querySelectorAll<HTMLButtonElement>('[data-patient-reschedule]').forEach(btn=>{if(btn.dataset.bound==='1')return;btn.dataset.bound='1';btn.addEventListener('click',()=>{sessionStorage.setItem('ps_reschedule_appointment',String(btn.dataset.patientReschedule));document.querySelector<HTMLButtonElement>('[data-patient-tab="agenda"]')?.click()})})
   }catch{}finally{sessionRenderBusy=false}
 }
 
@@ -124,16 +136,17 @@ function installCaptureFlow(){
       return
     }
 
-    const recurringPix=target.closest<HTMLButtonElement>('[data-rec-pay="pix"]')
-    if(recurringPix){
+    const recurring=target.closest<HTMLButtonElement>('[data-rec-pay]')
+    if(recurring){
       event.preventDefault();event.stopPropagation();event.stopImmediatePropagation()
-      const appointmentId=Number(recurringPix.dataset.id||0);if(!appointmentId)return
-      recurringPix.disabled=true
+      const appointmentId=Number(recurring.dataset.id||0);if(!appointmentId)return
+      const method=recurring.dataset.recPay as 'pix'|'card'
+      recurring.disabled=true
       try{
-        const result=await api('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:appointmentId,method:'pix'})})
-        if(result.pix_qr_code||result.pix_copy_paste)showPix(result,appointmentId)
+        const result=await api('/api/payments/checkout',{method:'POST',body:JSON.stringify({appointment_id:appointmentId,method})})
+        if(method==='pix'&&(result.pix_qr_code||result.pix_copy_paste))showPix(result,appointmentId)
         else if(result.checkout_url)window.location.href=result.checkout_url
-      }catch(e){alert(e instanceof Error?e.message:'Não foi possível iniciar o Pix.')}finally{recurringPix.disabled=false}
+      }catch(e){alert(e instanceof Error?e.message:'Não foi possível iniciar o pagamento.')}finally{recurring.disabled=false}
       return
     }
 
@@ -157,7 +170,14 @@ export function installPatientFlowHotfix(){
   installCaptureFlow()
   const run=()=>{patchRescheduleAgenda();void renderReliablePatientSessions()}
   ;[50,150,350,700,1300,2200].forEach(ms=>setTimeout(run,ms))
-  const root=document.getElementById('root')
-  if(root){let timer=0;new MutationObserver(()=>{window.clearTimeout(timer);timer=window.setTimeout(run,35)}).observe(root,{childList:true,subtree:true})}
+  let timer=0
+  const observer=new MutationObserver(records=>{
+    const relevant=records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node instanceof HTMLElement&&(node.matches('.patient-stable-view,.patient-section-content,.patient-panel,.patient-booking-box')||Boolean(node.querySelector?.('.patient-stable-view,.patient-section-content,.patient-panel,.patient-booking-box')))))
+    if(!relevant)return
+    window.clearTimeout(timer);timer=window.setTimeout(run,25)
+  })
+  observer.observe(document.body,{childList:true,subtree:true})
+  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('[data-patient-tab="consultas"]'))window.setTimeout(run,25)},true)
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)run()})
+  window.addEventListener('pageshow',run)
 }
