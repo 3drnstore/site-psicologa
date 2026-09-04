@@ -1,5 +1,9 @@
 import './admin-clinical-notes-enhancer.css'
 
+let installed=false
+let decorateBusy=false
+let scheduled=0
+
 async function api(path:string,init?:RequestInit){
   const response=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
   const data=await response.json().catch(()=>({})) as any
@@ -23,18 +27,17 @@ async function currentPatientId(email:string){
 
 async function reloadCurrentPatient(){
   const active=document.querySelector<HTMLButtonElement>('.patient-card.active')
-  if(active){active.click();return}
+  if(active){active.click();window.setTimeout(scheduleDecorate,120);return}
   window.location.reload()
 }
 
-let decorateBusy=false
 async function decorateNotes(){
   if(decorateBusy)return
   const {panel,email}=currentRecord()
   const list=panel?.querySelector<HTMLElement>('.note-list')
   if(!panel||!list||!email)return
   const articles=[...list.querySelectorAll<HTMLElement>('article')]
-  if(!articles.length||articles.every(article=>article.dataset.noteId))return
+  if(!articles.length)return
   decorateBusy=true
   try{
     const patientId=await currentPatientId(email)
@@ -43,14 +46,20 @@ async function decorateNotes(){
     const notes:any[]=detail.clinical_notes||[]
     articles.forEach((article,index)=>{
       const note=notes[index]
-      if(!note||article.dataset.noteId)return
+      if(!note)return
       article.dataset.noteId=String(note.id)
+      if(article.querySelector('[data-delete-clinical-note]'))return
       const actions=document.createElement('div')
       actions.className='clinical-note-actions'
       actions.innerHTML='<button type="button" data-delete-clinical-note>Excluir anotação</button>'
       article.appendChild(actions)
     })
   }catch(error){console.error('Clinical note decoration error',error)}finally{decorateBusy=false}
+}
+
+function scheduleDecorate(delay=40){
+  window.clearTimeout(scheduled)
+  scheduled=window.setTimeout(()=>void decorateNotes(),delay)
 }
 
 async function saveNote(form:HTMLFormElement){
@@ -96,7 +105,7 @@ function installDelete(){
     const target=event.target as HTMLElement|null
     const button=target?.closest<HTMLButtonElement>('[data-delete-clinical-note]')
     if(!button)return
-    event.preventDefault();event.stopPropagation()
+    event.preventDefault();event.stopPropagation();event.stopImmediatePropagation()
     const article=button.closest<HTMLElement>('article[data-note-id]')
     const id=article?.dataset.noteId
     if(!id)return
@@ -114,10 +123,13 @@ function installDelete(){
 }
 
 export function installAdminClinicalNotesEnhancer(){
+  if(installed){scheduleDecorate(0);return}
+  installed=true
   installSubmitGuard();installDelete()
-  const run=()=>void decorateNotes()
-  ;[100,350,800,1500].forEach(ms=>window.setTimeout(run,ms))
+  ;[50,150,350,800,1500].forEach(ms=>window.setTimeout(()=>void decorateNotes(),ms))
   const root=document.getElementById('root')
-  if(root){let timer=0;new MutationObserver(()=>{window.clearTimeout(timer);timer=window.setTimeout(run,60)}).observe(root,{childList:true,subtree:true})}
-  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card'))window.setTimeout(run,120)},true)
+  if(root)new MutationObserver(()=>scheduleDecorate(60)).observe(root,{childList:true,subtree:true})
+  document.addEventListener('click',event=>{const target=event.target as HTMLElement|null;if(target?.closest('.patient-card')||target?.closest('[data-admin-view="pacientes"]'))scheduleDecorate(100)},true)
+  window.addEventListener('pageshow',()=>scheduleDecorate(80))
+  window.setInterval(()=>{if(document.querySelector('.record-panel .note-list article'))scheduleDecorate(0)},1200)
 }
