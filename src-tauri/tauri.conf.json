@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PsicoGestão",
+  "productName": "Painel Profissional",
   "version": "0.1.4",
-  "identifier": "br.com.psicogestao.desktop",
+  "identifier": "br.com.painelprofissional.desktop",
   "build": {
     "frontendDist": "https://site-psicologa.thiagodrn2.workers.dev/admin"
   },
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "PsicoGestão",
+        "title": "Painel Profissional",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -28,7 +28,7 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "icon": ["icons/icon.ico"],
-    "shortDescription": "PsicoGestão para Windows",
-    "longDescription": "Aplicativo desktop do PsicoGestão para acesso ao painel e aos recursos do sistema no Windows."
+    "shortDescription": "Painel profissional para Windows",
+    "longDescription": "Aplicativo desktop para acesso ao painel profissional e aos recursos do sistema no Windows."
   }
 }
