@@ -21,6 +21,7 @@ import { installPatientWeekPolish } from './patient-week-polish'
 import { installPatientSecurityDeletePolish } from './patient-security-delete-polish'
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installAdminPatientRecurrenceEnhancer } from './admin-patient-recurrence-enhancer'
+import { installAdminClinicalNotesEnhancer } from './admin-clinical-notes-enhancer'
 import { installAdminDashboardSessionState } from './admin-dashboard-session-state'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
 import { installAdminPlatformPricingEnhancer } from './admin-platform-pricing-enhancer'
@@ -80,4 +81,4 @@ function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>
 
 installD1FetchCache();installAppResilience();installPlatformInviteEnhancer()
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminConsultationsV2();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientDefaultSessionsEnhancer();installPatientPortalEnhancer();installPatientWeekPolish();installPatientSecurityDeletePolish();installAdminAppointmentEnhancer();installAdminPatientRecurrenceEnhancer();installAdminDashboardSessionState();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync();installTerminologyEnhancer();installSessionManagementUi();installPatientFlowHotfix()
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminConsultationsV2();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientDefaultSessionsEnhancer();installPatientPortalEnhancer();installPatientWeekPolish();installPatientSecurityDeletePolish();installAdminAppointmentEnhancer();installAdminPatientRecurrenceEnhancer();installAdminClinicalNotesEnhancer();installAdminDashboardSessionState();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync();installTerminologyEnhancer();installSessionManagementUi();installPatientFlowHotfix()
