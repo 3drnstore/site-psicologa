@@ -10,9 +10,9 @@ const DESKTOP_UI_SCRIPT: &str = r#"
   `;
 
   const installDesktopUi = () => {
-    if (!document.getElementById('psicogestao-desktop-style')) {
+    if (!document.getElementById('professional-panel-desktop-style')) {
       const style = document.createElement('style');
-      style.id = 'psicogestao-desktop-style';
+      style.id = 'professional-panel-desktop-style';
       style.textContent = `
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear {
@@ -118,5 +118,5 @@ pub fn run() {
             let _ = webview.eval(DESKTOP_UI_SCRIPT);
         })
         .run(tauri::generate_context!())
-        .expect("erro ao iniciar o PsicoGestão Desktop");
+        .expect("erro ao iniciar o Painel Profissional Desktop");
 }
