@@ -7,6 +7,9 @@
     "APP_ORIGIN": "https://site-psicologa.thiagodrn2.workers.dev",
     "MERCADOPAGO_TEST_MODE": "true"
   },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
