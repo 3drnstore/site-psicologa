@@ -1,0 +1,1 @@
+Forçar novo deploy do portal do paciente com as correções de troca fluida de semana, data escolhida no card e botão de visibilidade de senha sem fundo.
