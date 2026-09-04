@@ -30,6 +30,14 @@ const labelToView = (label: string):AdminView|null => {
 }
 
 const viewToLabel = (view: AdminView) => view === 'dashboard' ? 'Painel' : view === 'agenda' ? 'Agenda' : view === 'consultas' ? 'Consultas' : view === 'pagamentos' ? 'Pagamentos' : view === 'pacientes' ? 'Pacientes' : 'Configurações'
+const isAdminView=(value:string|null):value is AdminView=>!!value&&['dashboard','agenda','consultas','pagamentos','pacientes','configuracoes'].includes(value)
+const queryViewToAdminView=(value:string|null):AdminView|null=>value==='dashboard'?'dashboard':value==='sessions'?'consultas':value==='agenda'?'agenda':value==='finance'?'pagamentos':value==='patients'?'pacientes':null
+function desiredInitialView():AdminView{
+  const queryView=queryViewToAdminView(new URLSearchParams(window.location.search).get('view'))
+  if(queryView){localStorage.setItem(STORAGE_KEY,queryView);return queryView}
+  const stored=localStorage.getItem(STORAGE_KEY)
+  return isAdminView(stored)?stored:'dashboard'
+}
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c] || c))
 const money = (cents:number) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100)
 const dateTime = (value:string) => new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))
@@ -213,11 +221,11 @@ export function installAdminStateEnhancer() {
     if (!sidebar.dataset.desktopNavRestored&&!restoring) {
       sidebar.dataset.desktopNavRestored='1'
       restoring=true
-      localStorage.setItem(STORAGE_KEY,'dashboard')
+      const wanted=desiredInitialView()
       window.setTimeout(()=>{
-        restoring=false
-        const target=buttonByLabel(sidebar,'Painel')
+        const target=buttonByLabel(sidebar,viewToLabel(wanted))
         target?.click()
+        restoring=false
       },0)
     }
     return true
