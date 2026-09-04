@@ -24,6 +24,7 @@ import { ensureSchemaReady } from './schema-bootstrap'
 import { handleSessionManagement, runScheduledSessionTasks } from './session-management'
 import { handleRecurringCheckout } from './recurring-checkout'
 import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile'
+import { handleCancelledDayReconcile } from './cancelled-day-reconcile'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -79,6 +80,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const platformPricing = await handlePlatformPricing(request, env, path); if (platformPricing) return platformPricing
   const roleBlocked = await guardAdminRole(request, env, path); if (roleBlocked) return roleBlocked
 
+  const cancelledDayReconcile=await handleCancelledDayReconcile(request,env,path);if(cancelledDayReconcile)return cancelledDayReconcile
   await touchRecurrence(request, env, path)
   const sessionManagement = await handleSessionManagement(request, env, path)
   if (sessionManagement) return sessionManagement
