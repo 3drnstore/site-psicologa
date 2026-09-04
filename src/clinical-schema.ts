@@ -12,11 +12,21 @@ export async function ensureClinicalEncryptionSchema(env:Env){
   await addColumn(env,'wrapped_dek','TEXT')
   await addColumn(env,'wrap_iv','TEXT')
   await addColumn(env,'encryption_version','TEXT')
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS clinical_vaults(
+    admin_user_id TEXT PRIMARY KEY,
+    wrapped_vault_key TEXT NOT NULL,
+    wrap_iv TEXT NOT NULL,
+    kdf_salt TEXT NOT NULL,
+    kdf_iterations INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );`)
 
-  const marker='clinical_envelope_encryption_v1_initialized'
+  const marker='clinical_e2e_v1_initialized'
   const initialized=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(marker).first<any>()
   if(!initialized){
-    // O prontuário legado atual é apenas dado de teste e foi autorizado para exclusão.
+    // Dados clínicos anteriores eram apenas testes e foram autorizados para exclusão.
     await env.DB.batch([
       env.DB.prepare('DELETE FROM clinical_notes'),
       env.DB.prepare("INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?, '1', CURRENT_TIMESTAMP)").bind(marker),
