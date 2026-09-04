@@ -79,6 +79,40 @@ function PatientRouteGate() {
 }
 function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>;if(path==='/privacidade'||path==='/privacidade/')return <PrivacyPage/>;if(path==='/admin/setup')return <AdminSetup/>;if(path==='/recuperar-senha')return <PasswordRecovery/>;if(path==='/admin'||path==='/admin/'||path.startsWith('/admin/configuracoes/'))return <AdminRouteGate/>;if(path==='/paciente'||path==='/paciente/')return <PatientRouteGate/>;return <App/>}
 
-installD1FetchCache();installAppResilience();installPlatformInviteEnhancer()
+function safeInstall(name:string, installer:()=>void){try{installer()}catch(error){console.error(`Falha ao iniciar ${name}:`,error)}}
+
+safeInstall('cache D1',installD1FetchCache)
+safeInstall('resiliência',installAppResilience)
+safeInstall('convite da plataforma',installPlatformInviteEnhancer)
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminConsultationsV2();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientDefaultSessionsEnhancer();installPatientPortalEnhancer();installPatientWeekPolish();installPatientSecurityDeletePolish();installAdminAppointmentEnhancer();installAdminPatientRecurrenceEnhancer();installAdminClinicalNotesEnhancer();installAdminDashboardSessionState();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync();installTerminologyEnhancer();installSessionManagementUi();installPatientFlowHotfix()
+
+// Controles críticos do prontuário são iniciados primeiro e isoladamente.
+safeInstall('recorrência do paciente',installAdminPatientRecurrenceEnhancer)
+safeInstall('anotações clínicas',installAdminClinicalNotesEnhancer)
+safeInstall('senhas',installPasswordEnhancer)
+safeInstall('calendário administrativo',installAdminCalendarEnhancer)
+safeInstall('estado administrativo',installAdminStateEnhancer)
+safeInstall('consultas administrativas',installAdminConsultationsV2)
+safeInstall('segurança administrativa',installAdminSecurityEnhancer)
+safeInstall('segurança de sessão administrativa',installAdminSessionSecurityEnhancer)
+safeInstall('2FA administrativo',installAdmin2faEnhancer)
+safeInstall('menu de configurações',installAdminConfigMenuEnhancer)
+safeInstall('sessões padrão do paciente',installPatientDefaultSessionsEnhancer)
+safeInstall('portal do paciente',installPatientPortalEnhancer)
+safeInstall('semana do paciente',installPatientWeekPolish)
+safeInstall('exclusão de conta do paciente',installPatientSecurityDeletePolish)
+safeInstall('consultas administrativas complementares',installAdminAppointmentEnhancer)
+safeInstall('estado da sessão do painel',installAdminDashboardSessionState)
+safeInstall('preços',installPricingUiEnhancer)
+safeInstall('preços administrativos',installAdminPlatformPricingEnhancer)
+safeInstall('mensagens do paciente',installPatientMessageEnhancer)
+safeInstall('mensagens administrativas',installAdminMessagesEnhancer)
+safeInstall('apresentação profissional',installProfessionalPresentationEnhancer)
+safeInstall('contato',installContactSectionEnhancer)
+safeInstall('CTA da página inicial',installHomepageCtaSafe)
+safeInstall('acessibilidade',installAccessibilitySafe)
+safeInstall('links de privacidade',installPrivacyLinksSafe)
+safeInstall('sincronização de rota do paciente',installPatientRouteSync)
+safeInstall('terminologia',installTerminologyEnhancer)
+safeInstall('gestão de sessões',installSessionManagementUi)
+safeInstall('correções do fluxo do paciente',installPatientFlowHotfix)
