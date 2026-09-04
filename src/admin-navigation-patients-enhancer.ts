@@ -78,14 +78,26 @@ async function enhanceSessionPatientLinks(){
   })
 }
 
+function contentMatches(view:View){
+  const title=(document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()
+  const custom=Boolean(document.querySelector('.admin-custom-view'))
+  const customMode=Boolean(document.querySelector('.admin-main.admin-custom-mode'))
+  if(view==='dashboard')return custom&&customMode&&title==='Visão geral'
+  if(view==='sessions')return custom&&customMode&&['Sessões','Consultas'].includes(title)
+  if(view==='finance')return custom&&customMode&&['Financeiro','Pagamentos'].includes(title)
+  if(view==='agenda')return !custom&&!customMode&&title==='Agenda'
+  if(view==='patients')return !custom&&!customMode&&title.startsWith('Pacientes')
+  return false
+}
+
 function restoreFromUrl(){
   if(restoring||location.pathname.startsWith('/admin/configuracoes/'))return
   const side=sidebar();if(!side)return
   const view=desiredView(),button=buttonFor(view);if(!button)return
-  if(button.classList.contains('active')){saveStoredView(view);return}
+  if(button.classList.contains('active')&&contentMatches(view)){saveStoredView(view);return}
   restoring=true
   button.click()
-  window.setTimeout(()=>{restoring=false;saveStoredView(view);if(view==='patients')void enhancePatientBank()},160)
+  window.setTimeout(()=>{restoring=false;saveStoredView(view);if(!contentMatches(view))window.setTimeout(()=>button.click(),0);if(view==='patients')void enhancePatientBank()},180)
 }
 
 function onDocumentClick(event:Event){
@@ -106,7 +118,7 @@ export function installAdminNavigationPatientsEnhancer(){
   if(installed){schedule(0);return}
   installed=true
   document.addEventListener('click',onDocumentClick,true)
-  ;[80,220,500,1000].forEach(ms=>window.setTimeout(()=>schedule(0),ms))
+  ;[80,220,500,1000,1600].forEach(ms=>window.setTimeout(()=>schedule(0),ms))
   const root=document.getElementById('root');if(root)new MutationObserver(()=>schedule(100)).observe(root,{childList:true,subtree:true})
   window.addEventListener('pageshow',()=>schedule(80));window.addEventListener('popstate',()=>schedule(40))
 }
