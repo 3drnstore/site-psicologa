@@ -31,6 +31,7 @@ import { installHomepageCtaSafe } from './homepage-cta-safe'
 import { installAccessibilitySafe } from './accessibility-safe'
 import { installAppResilience } from './app-resilience'
 import { installPrivacyLinksSafe } from './privacy-links-safe'
+import { installTerminologyEnhancer } from './terminology-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -73,4 +74,4 @@ function RoutedApp(){if(path==='/status'||path==='/status/')return <StatusPage/>
 
 installD1FetchCache();installAppResilience();installPlatformInviteEnhancer()
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
-installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientPortalEnhancer();installPatientWeekPolish();installPatientSecurityDeletePolish();installAdminAppointmentEnhancer();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync()
+installPasswordEnhancer();installAdminCalendarEnhancer();installAdminStateEnhancer();installAdminSecurityEnhancer();installAdminSessionSecurityEnhancer();installAdmin2faEnhancer();installAdminConfigMenuEnhancer();installPatientPortalEnhancer();installPatientWeekPolish();installPatientSecurityDeletePolish();installAdminAppointmentEnhancer();installPricingUiEnhancer();installAdminPlatformPricingEnhancer();installPatientMessageEnhancer();installAdminMessagesEnhancer();installProfessionalPresentationEnhancer();installContactSectionEnhancer();installHomepageCtaSafe();installAccessibilitySafe();installPrivacyLinksSafe();installPatientRouteSync();installTerminologyEnhancer()
