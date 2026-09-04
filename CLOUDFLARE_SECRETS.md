@@ -2,6 +2,15 @@
 
 Não coloque credenciais reais no GitHub. Configure-as em **Worker > Settings > Variables and Secrets**.
 
+## Criptografia de prontuários
+- `CLINICAL_MASTER_KEY` — segredo exclusivo para envelope encryption dos prontuários clínicos. Deve ser longo, aleatório e tratado como chave crítica. Não reutilize senha, token de setup ou credencial de outro serviço.
+
+Recomendação de geração local: `openssl rand -base64 48` ou equivalente criptograficamente seguro. Cadastre o resultado diretamente como **Secret** no Cloudflare e guarde uma cópia em cofre de senhas/segredos. Não registre o valor no GitHub, em logs ou em documentação.
+
+O sistema usa uma DEK AES-256-GCM aleatória para cada anotação clínica. A DEK é protegida por uma KEK derivada de `CLINICAL_MASTER_KEY`, também com AES-GCM. O D1 armazena somente ciphertext, IVs, DEK encapsulada e versão criptográfica; o campo legado `note_text` permanece vazio. A chave-mestra não é armazenada no banco.
+
+**Importante:** perder `CLINICAL_MASTER_KEY` torna os prontuários cifrados irrecuperáveis. Antes de rotacionar essa chave, implemente/revise o procedimento de reencapsulamento das DEKs.
+
 ## Pagamentos
 
 ### Mercado Pago (Pix)

@@ -15,6 +15,7 @@ export interface Env {
   PAYMENT_API_KEY?: string
   PAYMENT_WEBHOOK_SECRET?: string
   ADMIN_SETUP_TOKEN?: string
+  CLINICAL_MASTER_KEY?: string
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   TURNSTILE_SITE_KEY?: string
