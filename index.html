@@ -11,6 +11,40 @@
     <script>
       if(location.pathname==='/admin'||location.pathname==='/admin/'||location.pathname.startsWith('/admin/configuracoes/'))document.documentElement.classList.add('admin-boot')
     </script>
+    <script>
+      (() => {
+        const OLD_BRAND = /PsicoGest(?:ã|a)o/gi;
+        const replaceBrand = (value) => String(value || '').replace(OLD_BRAND, 'Painel Administrativo');
+        const neutralizeBrand = (root = document) => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          const nodes = [];
+          while (walker.nextNode()) nodes.push(walker.currentNode);
+          for (const node of nodes) {
+            if (OLD_BRAND.test(node.nodeValue || '')) node.nodeValue = replaceBrand(node.nodeValue);
+            OLD_BRAND.lastIndex = 0;
+          }
+          if (OLD_BRAND.test(document.title)) document.title = replaceBrand(document.title);
+          OLD_BRAND.lastIndex = 0;
+        };
+        const start = () => {
+          neutralizeBrand(document);
+          new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                  if (OLD_BRAND.test(node.nodeValue || '')) node.nodeValue = replaceBrand(node.nodeValue);
+                  OLD_BRAND.lastIndex = 0;
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                  neutralizeBrand(node);
+                }
+              });
+            }
+          }).observe(document.documentElement, { childList: true, subtree: true });
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+        else start();
+      })();
+    </script>
     <meta name="application-name" content="Jacqueline Siqueira • Psicologia" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
