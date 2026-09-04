@@ -13,6 +13,7 @@ const shortWeekday=(d:Date)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).f
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[c]||c))
 const waPhone=(v:unknown)=>{const d=String(v??'').replace(/\D/g,'');if(!d)return '';return d.startsWith('55')?d:`55${d}`}
 const gmailCompose=(email:string)=>`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}`
+const isPastCell=(c:Cell)=>new Date(c.starts_at).getTime()<Date.now()
 
 class AdminCalendar {
   host:HTMLElement
@@ -54,6 +55,7 @@ class AdminCalendar {
   }
 
   toggle(c:Cell,button:HTMLElement,shiftKey=false){
+    if(isPastCell(c)){this.notice='Horários passados são somente para consulta e não podem ser alterados.';this.renderNotice();return}
     const k=this.key(c)
     if(shiftKey&&this.anchorKey){
       const cells=this.allCells(),anchor=cells.find(x=>this.key(x)===this.anchorKey)
@@ -65,7 +67,7 @@ class AdminCalendar {
         const minHour=Math.min(anchor.hour,c.hour),maxHour=Math.max(anchor.hour,c.hour)
         for(const cell of cells){
           const di=days.findIndex(d=>d.toDateString()===cell.day.toDateString())
-          if(di>=minDay&&di<=maxDay&&cell.hour>=minHour&&cell.hour<=maxHour)this.selected.add(this.key(cell))
+          if(!isPastCell(cell)&&di>=minDay&&di<=maxDay&&cell.hour>=minHour&&cell.hour<=maxHour)this.selected.add(this.key(cell))
         }
         this.paintSelection();return
       }
@@ -75,7 +77,7 @@ class AdminCalendar {
     this.paintSelection()
   }
 
-  selectedCells(){return this.allCells().filter(c=>this.selected.has(this.key(c)))}
+  selectedCells(){return this.allCells().filter(c=>!isPastCell(c)&&this.selected.has(this.key(c)))}
 
   applyLocal(mode:BulkMode,cells:Cell[]){
     for(const c of cells){
@@ -88,7 +90,7 @@ class AdminCalendar {
   async bulk(mode:BulkMode){
     if(this.busy)return
     const cells=this.selectedCells()
-    if(!cells.length){this.notice='Selecione um ou mais horários primeiro.';this.renderNotice();return}
+    if(!cells.length){this.notice='Selecione um ou mais horários futuros primeiro.';this.renderNotice();return}
     this.busy=true
     this.host.querySelectorAll<HTMLButtonElement>('[data-bulk]').forEach(b=>b.disabled=true)
     const r=await fetch('/api/admin/availability/bulk',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({mode,cells:cells.map(c=>({starts_at:c.starts_at,ends_at:c.ends_at}))})})
@@ -156,7 +158,7 @@ class AdminCalendar {
           <button data-bulk="blocked">Marcar como bloqueado</button>
           <button data-clear>Limpar seleção</button>
         </div>
-        <small>Clique para selecionar. Use <strong>Shift + clique</strong> para selecionar uma faixa.</small>
+        <small>Horários passados são somente para consulta. Em horários futuros, clique para selecionar e use <strong>Shift + clique</strong> para selecionar uma faixa.</small>
       </div>
       ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
       <div class="work-grid agenda-columns">
@@ -169,9 +171,10 @@ class AdminCalendar {
             </header>
             <div class="agenda-day-cards">
               ${cells.map(c=>{
+                const past=isPastCell(c)
                 const selected=this.selected.has(this.key(c))
                 const hasAppointment=Boolean(c.slot?.appointment_id&&['confirmed','pending_payment','held'].includes(String(effectiveStatus(c.slot))))
-                return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''}" data-cell="${this.key(c)}">
+                return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''} ${past?'past-readonly':''}" data-cell="${this.key(c)}" ${past?'aria-disabled="true" title="Horário passado — somente consulta"':''}>
                   <strong class="agenda-slot-time">${fmtTime(c.starts_at)} - ${fmtTime(c.ends_at)}</strong>
                   ${this.slotBody(c.slot)}
                 </button>`
@@ -187,7 +190,7 @@ class AdminCalendar {
     this.host.querySelectorAll<HTMLButtonElement>('[data-bulk]').forEach(b=>b.addEventListener('click',()=>void this.bulk(b.dataset.bulk as BulkMode)))
     this.host.querySelector('[data-clear]')?.addEventListener('click',()=>{this.selected.clear();this.anchorKey=null;this.paintSelection()})
     const map=new Map(this.allCells().map(c=>[this.key(c),c]))
-    this.host.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=map.get(String(el.dataset.cell));if(c)el.addEventListener('click',(event)=>{const target=event.target as HTMLElement|null;const contact=target?.closest<HTMLElement>('[data-patient-contact]');if(contact&&c.slot){event.preventDefault();event.stopPropagation();this.openContact(c.slot,contact);return}this.toggle(c,el,(event as MouseEvent).shiftKey)})})
+    this.host.querySelectorAll<HTMLElement>('[data-cell]').forEach(el=>{const c=map.get(String(el.dataset.cell));if(c)el.addEventListener('click',(event)=>{const target=event.target as HTMLElement|null;const contact=target?.closest<HTMLElement>('[data-patient-contact]');if(contact&&c.slot){event.preventDefault();event.stopPropagation();this.openContact(c.slot,contact);return}if(isPastCell(c)){event.preventDefault();this.notice='Horários passados são somente para consulta e não podem ser alterados.';this.renderNotice();return}this.toggle(c,el,(event as MouseEvent).shiftKey)})})
   }
 }
 
