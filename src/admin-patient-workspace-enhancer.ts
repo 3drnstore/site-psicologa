@@ -40,7 +40,7 @@ async function openOverview(id:number){
 async function openClinical(id:number){
   const p=panel();if(!p)return
   p.innerHTML='<div class="empty-state">Abrindo prontuário protegido...</div>'
-  try{renderClinical(await getJson(`/api/admin/patients/${id}`))}catch(e){p.innerHTML=`<div class="empty-state">${esc(e instanceof Error?e.message:'Não foi possível abrir o prontuário.')}</div>`}
+  try{renderClinical(await getJson(`/api/admin/patients/${id}?clinical=1`))}catch(e){p.innerHTML=`<div class="empty-state">${esc(e instanceof Error?e.message:'Não foi possível abrir o prontuário.')}</div>`}
 }
 
 export function installAdminPatientWorkspaceEnhancer(){
