@@ -1,6 +1,10 @@
+import { installClinicalE2E } from './clinical-e2e-client'
+
 type CacheEntry={expires:number,status:number,statusText:string,headers:[string,string][],body:string}
 type PendingEntry=Promise<CacheEntry>
 
+// E2E must wrap native fetch before the generic cache captures it.
+installClinicalE2E()
 const originalFetch=window.fetch.bind(window)
 const cache=new Map<string,CacheEntry>()
 const pending=new Map<string,PendingEntry>()
@@ -54,9 +58,7 @@ export function installD1FetchCache(){
       return response
     }
 
-    // Authentication state must always come from the server. A cached 401 here
-    // can make a successful login appear to have failed until the TTL expires.
-    if(AUTH_STATE_PATHS.has(path)||init?.cache==='no-store'){
+    if(AUTH_STATE_PATHS.has(path)||init?.cache==='no-store'||path==='/api/admin/clinical-vault'||/^\/api\/admin\/patients\/\d+$/.test(path)){
       return originalFetch(input as any,{...init,cache:'no-store'})
     }
 
