@@ -203,7 +203,7 @@ export function installAdminCalendarEnhancer(){
   const enhance=()=>{
     document.querySelectorAll<HTMLElement>('.admin-panel').forEach(panel=>{
       const h=panel.querySelector('h2')?.textContent?.trim()
-      if(h==='Novo horário'||h==='Bloqueio recorrente'){panel.style.display='none';return}
+      if(h==='Novo horário'||h==='Bloqueio recorrente'||h==='Consultas reais'||h==='Sessões reais'){panel.style.display='none';return}
       if(h!=='Grade administrativa'||panel.dataset.calendarEnhanced)return
       panel.dataset.calendarEnhanced='1'
       const old=panel.querySelector('.appointment-list');if(old)old.remove()
