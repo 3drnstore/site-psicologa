@@ -22,8 +22,8 @@ type Patient = { id:number; full_name:string; email:string; phone?:string|null; 
 const labelToView = (label: string):AdminView|null => {
   if (label === 'Painel') return 'dashboard'
   if (label === 'Agenda') return 'agenda'
-  if (label === 'Consultas') return 'consultas'
-  if (label === 'Pagamentos') return 'pagamentos'
+  if (label === 'Consultas' || label === 'Sessões') return 'consultas'
+  if (label === 'Pagamentos' || label === 'Financeiro') return 'pagamentos'
   if (label === 'Pacientes') return 'pacientes'
   if (label === 'Configurações') return 'configuracoes'
   return null
@@ -49,10 +49,20 @@ async function getJson(path:string){
 }
 
 function sidebarButtons(sidebar:HTMLElement){return [...sidebar.querySelectorAll<HTMLButtonElement>('nav button')]}
-function buttonByLabel(sidebar:HTMLElement,label:string){return sidebarButtons(sidebar).find(button=>(button.textContent||'').trim()===label)}
+function buttonByLabel(sidebar:HTMLElement,label:string){
+  const wanted=labelToView(label)
+  return sidebarButtons(sidebar).find(button=>{
+    const text=(button.textContent||'').trim()
+    return text===label || (wanted!==null && labelToView(text)===wanted)
+  })
+}
 
 function setSidebarActive(sidebar:HTMLElement,label:string){
-  sidebarButtons(sidebar).forEach(button=>button.classList.toggle('active',(button.textContent||'').trim()===label))
+  const wanted=labelToView(label)
+  sidebarButtons(sidebar).forEach(button=>{
+    const text=(button.textContent||'').trim()
+    button.classList.toggle('active',text===label || (wanted!==null && labelToView(text)===wanted))
+  })
 }
 
 function setHeader(main:HTMLElement,title:string,kicker:string){
@@ -107,15 +117,6 @@ function dashboardMarkup(appointments:Appointment[],patients:Patient[]){
     </section>`
 }
 
-function consultationsMarkup(appointments:Appointment[]){
-  const ordered=[...appointments].sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
-  return `${quickActions()}<div class="admin-section-title"><div><h2>Consultas</h2><p>Histórico de atendimentos, reservas e cancelamentos.</p></div><span>${appointments.length} registro(s)</span></div>
-    <section class="admin-table-card">
-      <div class="admin-table-row header"><span>Paciente</span><span>Data e horário</span><span>Status</span><span>Valor</span></div>
-      ${ordered.length?ordered.map(a=>`<div class="admin-table-row"><div><strong>${esc(a.full_name)}</strong><small>${esc(a.email)}</small></div><div><strong>${esc(dateTime(a.starts_at))}</strong><small>até ${esc(timeOnly(a.ends_at))}</small></div><div><span class="admin-status-chip ${statusClass(a.status)}">${esc(statusLabel(a.status))}</span></div><div><strong>${esc(money(a.amount_cents))}</strong><small>${esc(paymentMethod(a))}</small></div></div>`).join(''):`<div style="padding:18px">${empty('Nenhuma consulta registrada.')}</div>`}
-    </section>`
-}
-
 function paymentsMarkup(appointments:Appointment[]){
   const now=new Date()
   const paid=appointments.filter(a=>a.status==='confirmed'&&a.paid_at)
@@ -151,6 +152,12 @@ async function renderCustom(view:'dashboard'|'consultas'|'pagamentos',sidebar:HT
   host.innerHTML=empty('Carregando informações...')
   main.appendChild(host)
 
+  if(view==='consultas'){
+    // The V2 sessions enhancer owns this view. Keeping the legacy table out of the DOM
+    // prevents the old screen from flashing before V2 renders.
+    return
+  }
+
   try{
     const [appointmentData,patientData]=await Promise.all([
       getJson('/api/admin/appointments'),
@@ -159,7 +166,7 @@ async function renderCustom(view:'dashboard'|'consultas'|'pagamentos',sidebar:HT
     const appointments=(appointmentData.appointments||[]) as Appointment[]
     const patients=(patientData.patients||[]) as Patient[]
     if(!host.isConnected)return
-    host.innerHTML=view==='dashboard'?dashboardMarkup(appointments,patients):view==='consultas'?consultationsMarkup(appointments):paymentsMarkup(appointments)
+    host.innerHTML=view==='dashboard'?dashboardMarkup(appointments,patients):paymentsMarkup(appointments)
     host.querySelectorAll<HTMLButtonElement>('[data-admin-open]').forEach(button=>button.addEventListener('click',()=>{
       const target=buttonByLabel(sidebar,String(button.dataset.adminOpen||''))
       target?.click()
@@ -213,13 +220,13 @@ export function installAdminStateEnhancer() {
     if (!sidebar.dataset.desktopNavRestored&&!restoring) {
       sidebar.dataset.desktopNavRestored='1'
       restoring=true
-      const saved=(localStorage.getItem(STORAGE_KEY)||'dashboard') as AdminView
-      const safe:AdminView=['dashboard','agenda','consultas','pagamentos','pacientes','configuracoes'].includes(saved)?saved:'dashboard'
+      // The professional area must always start on Painel after entering/reloading.
+      localStorage.setItem(STORAGE_KEY,'dashboard')
       window.setTimeout(()=>{
         restoring=false
-        const target=buttonByLabel(sidebar,viewToLabel(safe))
+        const target=buttonByLabel(sidebar,'Painel')
         target?.click()
-      },100)
+      },0)
     }
     return true
   }
