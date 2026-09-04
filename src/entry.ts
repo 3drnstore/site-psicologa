@@ -114,7 +114,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   }
 
   if (path.startsWith('/api/auth/google/')) { const response = await handleGoogleAuth(request, env); if (response) return response }
-  return worker.fetch(request, env, ctx as any)
+  return worker.fetch(request, env)
 }
 
 export default {
