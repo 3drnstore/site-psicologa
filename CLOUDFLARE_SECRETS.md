@@ -3,13 +3,14 @@
 Não coloque credenciais reais no GitHub. Configure-as em **Worker > Settings > Variables and Secrets**.
 
 ## Criptografia de prontuários
-- `CLINICAL_MASTER_KEY` — segredo exclusivo para envelope encryption dos prontuários clínicos. Deve ser longo, aleatório e tratado como chave crítica. Não reutilize senha, token de setup ou credencial de outro serviço.
 
-Recomendação de geração local: `openssl rand -base64 48` ou equivalente criptograficamente seguro. Cadastre o resultado diretamente como **Secret** no Cloudflare e guarde uma cópia em cofre de senhas/segredos. Não registre o valor no GitHub, em logs ou em documentação.
+Os prontuários novos usam criptografia ponta a ponta no navegador. A chave do cofre clínico é criada no dispositivo e fica armazenada no servidor somente de forma cifrada. A senha do cofre nunca é enviada ao Cloudflare.
 
-O sistema usa uma DEK AES-256-GCM aleatória para cada anotação clínica. A DEK é protegida por uma KEK derivada de `CLINICAL_MASTER_KEY`, também com AES-GCM. O D1 armazena somente ciphertext, IVs, DEK encapsulada e versão criptográfica; o campo legado `note_text` permanece vazio. A chave-mestra não é armazenada no banco.
+Cada anotação recebe uma DEK AES-256-GCM aleatória. O texto é cifrado no navegador e a DEK é encapsulada pela chave do cofre antes do envio. O Worker e o D1 recebem apenas ciphertext, IVs e chaves encapsuladas. Word, PDF e backup são montados no navegador depois da descriptografia local.
 
-**Importante:** perder `CLINICAL_MASTER_KEY` torna os prontuários cifrados irrecuperáveis. Antes de rotacionar essa chave, implemente/revise o procedimento de reencapsulamento das DEKs.
+A senha do cofre deve ter pelo menos 12 caracteres e precisa ser guardada com segurança. Se ela for perdida, os prontuários E2E não poderão ser recuperados.
+
+`CLINICAL_MASTER_KEY` pertence à camada anterior de envelope encryption no Worker. Ela não é usada para abrir novos prontuários E2E. Pode ser mantida durante a transição e removida depois que a nova versão estiver validada e não houver dados legados dependentes dela.
 
 ## Pagamentos
 
