@@ -1,5 +1,6 @@
 import { readCookie, sha256 } from './auth'
 import { pricingForOrigin } from './platform-pricing'
+import { syncGoogleCalendarAvailability } from './google-calendar-sync'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
@@ -22,9 +23,10 @@ export async function handlePublicAvailabilityV3(request:Request,env:Env,path:st
   const url=new URL(request.url)
   const from=normalizeFrom(url.searchParams.get('from')||defaultFrom())
   const to=normalizeTo(url.searchParams.get('to')||new Date(Date.now()+60*86400000).toISOString())
+  const googleCalendar=await syncGoogleCalendarAvailability(env,from,to).catch(error=>({configured:true,synced:false,error:error instanceof Error?error.message:String(error)}))
   const result=await env.DB.prepare(`SELECT id,starts_at,ends_at,status,CASE WHEN status='free' THEN 'free' WHEN status='blocked' THEN 'blocked' ELSE 'occupied' END AS public_status FROM availability WHERE public_visibility='visible' AND starts_at>=? AND starts_at<=? ORDER BY starts_at ASC`).bind(from,to).all<any>()
   const pricing=await pricingForOrigin(env,p.pricing_origin,'card')
   const appointmentDuration=Math.max(1,Number(await setting(env,'appointment_duration_minutes','50'))||50)
   const holdMinutes=Math.max(1,Number(await setting(env,'hold_minutes','15'))||15)
-  return json({ok:true,slots:result.results||[],appointment_duration_minutes:appointmentDuration,hold_minutes:holdMinutes,...pricing})
+  return json({ok:true,slots:result.results||[],appointment_duration_minutes:appointmentDuration,hold_minutes:holdMinutes,google_calendar:googleCalendar,...pricing})
 }
