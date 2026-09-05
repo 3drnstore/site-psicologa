@@ -4,6 +4,7 @@ type Appointment={status:string;amount_cents:number;paid_at?:string|null}
 type MonthRow={key:string;year:number;month:number;total:number;count:number}
 type StatementEvent={kind:'received'|'refund';at:string;amount_cents:number;appointment_id:number;patient_name:string;description:string}
 type StatementData={month:string;title:string;events:StatementEvent[];received_cents:number;refunds_cents:number;net_cents:number;available_months:{key:string;label:string}[]}
+type PaymentTestStatus={ok:boolean;enabled:boolean;pending?:{appointment_id:number;payment_id:number;patient_name:string;starts_at:string;amount_cents:number;checkout_ready:boolean}|null}
 
 const money=(cents:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100)
 const monthName=(year:number,month:number)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(year,month,1)).replace(/^./,c=>c.toUpperCase())
@@ -44,6 +45,31 @@ async function renderStatement(host:HTMLElement,month?:string){
   }catch(error){host.innerHTML=`<div class="admin-monthly-header"><button type="button" class="admin-finance-back" data-statement-back>← Voltar</button></div><div class="error-box">${esc(error instanceof Error?error.message:'Não foi possível carregar o extrato.')}</div>`;host.querySelector<HTMLButtonElement>('[data-statement-back]')?.addEventListener('click',()=>financeButton()?.click())}
 }
 
+async function ensurePaymentTestButton(bar:HTMLElement){
+  if(bar.dataset.paymentTestChecked==='1')return
+  bar.dataset.paymentTestChecked='1'
+  try{
+    const status=await getJson('/api/admin/payment-flow-test') as PaymentTestStatus
+    if(!status.enabled||!status.pending||bar.querySelector('[data-payment-flow-test]'))return
+    const button=document.createElement('button')
+    button.type='button';button.className='admin-finance-monthly-button';button.dataset.paymentFlowTest='1';button.textContent='Testar cartão (sem cobrança)'
+    bar.appendChild(button)
+    button.addEventListener('click',async()=>{
+      const pending=status.pending;if(!pending)return
+      if(!confirm(`Executar teste técnico do cartão para a reserva de ${pending.patient_name}? Nenhuma cobrança será feita e a consulta permanecerá pendente após o teste.`))return
+      button.disabled=true;button.textContent='Testando...'
+      try{
+        const response=await fetch('/api/admin/payment-flow-test',{method:'POST',credentials:'include',cache:'no-store',headers:{'content-type':'application/json'},body:JSON.stringify({appointment_id:pending.appointment_id})})
+        const data=await response.json().catch(()=>({})) as any
+        if(!response.ok)throw new Error(data.message||'Não foi possível executar o teste.')
+        const checks=data.checks||{}
+        const mark=(value:any)=>value?.ok?'✓':'✗'
+        alert(`${data.message||'Teste concluído.'}\n\n${mark(checks.checkout)} Checkout InfinitePay\n${mark(checks.database)} Confirmação no banco (revertida ao final)\n${mark(checks.email)} E-mail técnico\n${mark(checks.calendar)} Google Agenda`)
+      }catch(error){alert(error instanceof Error?error.message:'Não foi possível executar o teste.')}finally{button.disabled=false;button.textContent='Testar cartão (sem cobrança)'}
+    })
+  }catch{delete bar.dataset.paymentTestChecked}
+}
+
 function ensureToolbar(){
   const title=(document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim();if(title!=='Financeiro'&&title!=='Pagamentos')return
   const host=document.querySelector<HTMLElement>('.admin-custom-view');if(!host||host.dataset.monthlyBilling==='1'||host.dataset.receitaSaude==='1'||host.dataset.financeSubview==='statement')return
@@ -51,6 +77,7 @@ function ensureToolbar(){
   let bar=host.querySelector<HTMLElement>('.admin-finance-toolbar');if(!bar){bar=document.createElement('div');bar.className='admin-finance-toolbar';host.insertBefore(bar,summary)}
   if(!bar.querySelector('[data-monthly-billing-open]')){const button=document.createElement('button');button.type='button';button.className='admin-finance-monthly-button';button.dataset.monthlyBillingOpen='1';button.textContent='Faturamento Mensal';bar.appendChild(button);button.addEventListener('click',()=>void renderMonthly(host))}
   if(!bar.querySelector('[data-statement-open]')){const button=document.createElement('button');button.type='button';button.className='admin-finance-monthly-button admin-finance-statement-button';button.dataset.statementOpen='1';button.textContent='Extrato';bar.appendChild(button);button.addEventListener('click',()=>void renderStatement(host))}
+  void ensurePaymentTestButton(bar)
 }
 
 async function decorateSummary(){
