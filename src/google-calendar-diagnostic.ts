@@ -13,25 +13,34 @@ async function token(env:Env):Promise<{ok:true;accessToken:string}|{ok:false;err
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{ok:false,error:'missing_credentials',detail:''}
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'})})
   const body=await r.json().catch(()=>({})) as any
-  if(!r.ok||!body.access_token)return{ok:false,error:`token_${r.status}`,detail:String(body.error||body.error_description||'')}
+  if(!r.ok||!body.access_token)return{ok:false,error:`token_${r.status}`,detail:String(body.error_description||body.error||'')}
   return{ok:true,accessToken:String(body.access_token)}
 }
 
 function safeEvent(e:any){return{id:String(e?.id||''),summary:String(e?.summary||'(sem título)'),status:String(e?.status||''),transparency:String(e?.transparency||'opaque'),start:e?.start?.dateTime||e?.start?.date||null,end:e?.end?.dateTime||e?.end?.date||null,portal_source:e?.extendedProperties?.private?.portal_source||null,portal_kind:e?.extendedProperties?.private?.portal_kind||null}}
+function googleError(body:any){return{code:Number(body?.error?.code||0)||null,status:String(body?.error?.status||'')||null,message:String(body?.error?.message||'')||null}}
 
 export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path!=='/api/admin/google-calendar/diagnostic'||request.method!=='GET')return null
   const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
   const t=await token(env)
   const calendarTarget=env.GOOGLE_CALENDAR_ID||'primary'
-  if(!t.ok)return json({ok:false,configured:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET&&env.GOOGLE_REFRESH_TOKEN),calendar_target:calendarTarget,token_error:t.error,token_detail:t.detail||null},200)
+  if(!t.ok)return json({ok:false,configured:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET&&env.GOOGLE_REFRESH_TOKEN),calendar_target:calendarTarget,stage:'refresh_token',token_error:t.error,token_detail:t.detail||null},200)
 
   const url=new URL(request.url)
   const from=url.searchParams.get('from')||new Date(Date.now()-7*86400000).toISOString()
   const to=url.searchParams.get('to')||new Date(Date.now()+30*86400000).toISOString()
   const encodedCalendar=encodeURIComponent(calendarTarget)
+  const auth={authorization:`Bearer ${t.accessToken}`,accept:'application/json'}
 
-  const metaResponse=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodedCalendar}`,{headers:{authorization:`Bearer ${t.accessToken}`,accept:'application/json'}})
+  const tokenInfoResponse=await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(t.accessToken)}`)
+  const tokenInfo=await tokenInfoResponse.json().catch(()=>({})) as any
+
+  const listResponse=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100',{headers:auth})
+  const listBody=await listResponse.json().catch(()=>({})) as any
+  const calendars=Array.isArray(listBody.items)?listBody.items.map((c:any)=>({id:String(c.id||''),summary:String(c.summary||''),primary:Boolean(c.primary),accessRole:String(c.accessRole||''),selected:Boolean(c.selected)})):[]
+
+  const metaResponse=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodedCalendar}`,{headers:auth})
   const meta=await metaResponse.json().catch(()=>({})) as any
 
   const eventsUrl=new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodedCalendar}/events`)
@@ -40,7 +49,7 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
   eventsUrl.searchParams.set('singleEvents','true')
   eventsUrl.searchParams.set('orderBy','startTime')
   eventsUrl.searchParams.set('maxResults','100')
-  const r=await fetch(eventsUrl.toString(),{headers:{authorization:`Bearer ${t.accessToken}`,accept:'application/json'}})
+  const r=await fetch(eventsUrl.toString(),{headers:auth})
   const body=await r.json().catch(()=>({})) as any
 
   const appointments=await env.DB.prepare(`SELECT a.id,a.status,a.calendar_sync_state,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE av.starts_at<? AND av.ends_at>? ORDER BY av.starts_at LIMIT 100`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
@@ -49,16 +58,17 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
 
   return json({
     ok:true,
-    mode:'READ_ONLY_DIAGNOSTIC_NO_GOOGLE_DELETES',
+    mode:'READ_ONLY_DIAGNOSTIC_NO_GOOGLE_WRITES_OR_DELETES',
     calendar_target:calendarTarget,
-    calendar_metadata:{request_status:metaResponse.status,id:meta?.id||null,summary:meta?.summary||null,timeZone:meta?.timeZone||null,error:metaResponse.ok?null:String(meta?.error?.message||'')},
     token_ok:true,
-    google_events_request_status:r.status,
-    google_events_count:Array.isArray(body.items)?body.items.length:0,
-    google_events:Array.isArray(body.items)?body.items.map(safeEvent):[],
+    token_scope:String(tokenInfo.scope||''),
+    token_email:String(tokenInfo.email||''),
+    calendar_list:{request_status:listResponse.status,error:listResponse.ok?null:googleError(listBody),calendars},
+    calendar_metadata:{request_status:metaResponse.status,id:meta?.id||null,summary:meta?.summary||null,timeZone:meta?.timeZone||null,error:metaResponse.ok?null:googleError(meta)},
+    google_events:{request_status:r.status,error:r.ok?null:googleError(body),count:Array.isArray(body.items)?body.items.length:0,events:Array.isArray(body.items)?body.items.map(safeEvent):[]},
     appointments:(appointments.results||[]).map((x:any)=>({id:x.id,status:x.status,calendar_sync_state:x.calendar_sync_state,has_google_event_id:Boolean(x.google_calendar_event_id),starts_at:x.starts_at,ends_at:x.ends_at,patient:x.full_name})),
     local_busy_slots:(availability.results||[]),
     portal_google_mappings:(mappings.results||[]).map((x:any)=>({key:x.key,has_event_id:Boolean(x.value)})),
-    note:'Este diagnóstico é somente leitura: não cria, altera nem apaga eventos no Google Calendar.'
+    note:'Somente leitura. Este diagnóstico não cria, altera nem apaga eventos no Google Calendar.'
   })
 }
