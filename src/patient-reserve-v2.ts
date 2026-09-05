@@ -1,5 +1,6 @@
 import { readCookie, sha256 } from './auth'
 import { pricingForOrigin } from './platform-pricing'
+import { sendReservationCreatedEmail } from './email-notifications'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
@@ -21,6 +22,7 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     const existing=await env.DB.prepare(`SELECT a.id,a.amount_cents,a.reserved_until,a.status FROM appointments a WHERE a.patient_id=? AND a.availability_id=? AND a.status='pending_payment' ORDER BY a.id DESC LIMIT 1`).bind(p.id,slotId).first<any>()
     if(existing&&(!existing.reserved_until||new Date(existing.reserved_until).getTime()>Date.now())){
       await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
+      await sendReservationCreatedEmail(env,Number(existing.id))
       return json({ok:true,appointment_id:Number(existing.id),reserved_until:existing.reserved_until,amount_cents:Number(existing.amount_cents||0),reused:true},200)
     }
     const slot=await env.DB.prepare(`SELECT id,starts_at,status FROM availability WHERE id=?`).bind(slotId).first<any>()
@@ -34,7 +36,9 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     if(!Number(hold.meta.changes||0))return json({ok:false,message:'Esse horário acabou de ser reservado por outra pessoa.'},409)
     try{
       const result=await env.DB.prepare(`INSERT INTO appointments (patient_id,availability_id,status,amount_cents,reserved_until) VALUES (?,?,'pending_payment',?,?)`).bind(p.id,slotId,amount,holdUntil).run()
-      return json({ok:true,appointment_id:Number(result.meta.last_row_id),reserved_until:holdUntil,amount_cents:amount,pricing_origin:pricing.origin},201)
+      const appointmentId=Number(result.meta.last_row_id)
+      await sendReservationCreatedEmail(env,appointmentId)
+      return json({ok:true,appointment_id:appointmentId,reserved_until:holdUntil,amount_cents:amount,pricing_origin:pricing.origin},201)
     }catch(error){await env.DB.prepare(`UPDATE availability SET status='free' WHERE id=? AND status='held'`).bind(slotId).run();throw error}
   }catch(error){console.error('Patient reserve error:',error instanceof Error?error.message:String(error));return json({ok:false,message:'Não foi possível reservar este horário agora.'},500)}
 }
