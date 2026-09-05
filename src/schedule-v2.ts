@@ -67,6 +67,24 @@ async function materializeRule(env: Env, rule: any) {
   }
 }
 
+function googleEventIdFromSource(source: string) {
+  if (source.startsWith('google_calendar_slot:')) return source.slice('google_calendar_slot:'.length)
+  if (source.startsWith('google_calendar_event:')) return source.slice('google_calendar_event:'.length)
+  return ''
+}
+
+async function attachGoogleSummaries(env: Env, rows: any[]) {
+  const googleRows = rows.filter(row => googleEventIdFromSource(String(row.source || '')))
+  if (!googleRows.length) return rows
+  const summaries = await env.DB.prepare(`SELECT key,value FROM settings WHERE key LIKE 'google_calendar_summary:%'`).all<any>()
+  const map = new Map((summaries.results || []).map((row:any)=>[String(row.key).slice('google_calendar_summary:'.length),String(row.value||'')]))
+  for (const row of googleRows) {
+    const eventId = googleEventIdFromSource(String(row.source || ''))
+    row.google_event_summary = map.get(eventId) || 'Compromisso no Google'
+  }
+  return rows
+}
+
 export async function handleScheduleV2(request: Request, env: Env, path: string): Promise<Response | null> {
   if (path === '/api/availability' && request.method === 'GET') {
     const p = await patient(request, env)
@@ -114,8 +132,9 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     } else {
       slots = await env.DB.prepare(`SELECT id,starts_at,ends_at,status,COALESCE(public_visibility,'visible') AS public_visibility,COALESCE(source,'manual') AS source,recurring_block_id FROM availability WHERE starts_at>=? AND starts_at<=? ORDER BY starts_at`).bind(from,to).all<any>()
     }
+    const slotRows = await attachGoogleSummaries(env, slots.results || [])
     const rules = await env.DB.prepare(`SELECT * FROM recurring_blocks ORDER BY active DESC,weekday,start_time`).all<any>()
-    return json({ ok:true, slots:slots.results||[], recurring_blocks:rules.results||[], google_calendar:googleCalendar })
+    return json({ ok:true, slots:slotRows, recurring_blocks:rules.results||[], google_calendar:googleCalendar })
   }
 
   const deleteMatch = path.match(/^\/api\/admin\/availability\/(\d+)$/)
