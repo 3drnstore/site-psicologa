@@ -1,7 +1,7 @@
 import { adminAuthSchemaStatus } from './admin-auth-schema'
 import type { Env } from './types'
 
-export const APP_RELEASE = '2026.09.05-automation-reliability-v1'
+export const APP_RELEASE = '2026.09.05-automation-calendar-days-v1'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -97,6 +97,10 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
       `).first<any>()
       automation = {
         cron_expected_every_minutes: 15,
+        schedule_basis: 'calendar_days',
+        payment_reminder_days_before: 3,
+        payment_final_days_before: 2,
+        appointment_reminder_days_before: 1,
         active_recurrence_rules: Number(recurrence?.active_rules || 0),
         recurring_pending_payment: Number(recurrence?.recurring_pending || 0),
         recurring_expired_last_24h: Number(recurrence?.recurring_expired_24h || 0),
