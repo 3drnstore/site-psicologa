@@ -83,7 +83,7 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
           (SELECT COUNT(*) FROM patient_recurrence WHERE active=1) AS active_rules,
           (SELECT COUNT(*) FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment') AS recurring_pending,
           (SELECT COUNT(*) FROM appointments WHERE reservation_kind='recurring' AND status='expired' AND updated_at>=datetime('now','-1 day')) AS recurring_expired_24h,
-          (SELECT MIN(payment_deadline_at) FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment' AND payment_deadline_at>CURRENT_TIMESTAMP) AS next_payment_deadline
+          (SELECT MIN(payment_deadline_at) FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment' AND datetime(payment_deadline_at)>datetime('now')) AS next_payment_deadline
       `).first<any>()
       const notifications = await env.DB.prepare(`
         SELECT
