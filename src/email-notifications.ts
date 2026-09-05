@@ -48,6 +48,10 @@ async function deliver(env:Env,patientId:number,appointmentId:number|null,kind:s
   return false
 }
 
+export async function sendPatientEventEmail(env:Env,patientId:number,appointmentId:number|null,kind:string,message:string,dedupeKey:string){
+  return deliver(env,patientId,appointmentId,kind,message,dedupeKey,{action_url:`${env.APP_ORIGIN||''}/paciente`})
+}
+
 export async function sendReservationCreatedEmail(env:Env,appointmentId:number){
   const row=await env.DB.prepare(`SELECT a.id,a.patient_id,a.reserved_until,a.payment_deadline_at,a.reservation_kind,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=?`).bind(appointmentId).first<any>()
   if(!row)return false
