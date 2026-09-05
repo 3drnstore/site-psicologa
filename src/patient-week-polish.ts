@@ -1,46 +1,24 @@
 let installed=false
-let weekOffset=0
-let bypass=false
 let chosenDateText=''
 let chosenTimeText=''
 
-type CachedWeek={body:string;status:number;contentType:string;fetchedAt:number}
-const weekCache=new Map<number,Promise<CachedWeek>>()
-const WEEK_CACHE_TTL_MS=10_000
-
 const mondayOf=(value:Date)=>{const d=new Date(value);d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return d}
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
-const ymd=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 const ddmm=(d:Date)=>`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
 const weekday=(d:Date)=>{const raw=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(d).replace('-feira','');return raw.charAt(0).toUpperCase()+raw.slice(1)}
 
-function weekPath(offset:number){
-  const start=addDays(mondayOf(new Date()),offset*7),end=addDays(start,4)
-  return `/api/availability?from=${encodeURIComponent(ymd(start))}&to=${encodeURIComponent(ymd(end))}`
-}
-
-async function preloadWeek(offset:number,force=false):Promise<CachedWeek>{
-  if(offset<0)throw new Error('Semana inválida')
-  if(!force){
-    const cached=weekCache.get(offset)
-    if(cached){
-      try{
-        const data=await cached
-        if(Date.now()-data.fetchedAt<WEEK_CACHE_TTL_MS)return data
-      }catch{}
-      weekCache.delete(offset)
-    }
+function visibleWeekOffset(){
+  const current=document.querySelector<HTMLElement>('.patient-week-grid')
+  if(!current)return 0
+  const firstHeader=current.querySelector<HTMLElement>('.patient-week-day header strong')
+  const day=Number(firstHeader?.textContent||0)
+  if(!day)return 0
+  const todayMonday=mondayOf(new Date())
+  for(let offset=0;offset<104;offset++){
+    const candidate=addDays(todayMonday,offset*7)
+    if(candidate.getDate()===day)return offset
   }
-  const promise=fetch(weekPath(offset),{credentials:'include',cache:'no-store'}).then(async response=>({
-    body:await response.text(),status:response.status,contentType:response.headers.get('content-type')||'application/json; charset=utf-8',fetchedAt:Date.now()
-  })).catch(error=>{weekCache.delete(offset);throw error})
-  weekCache.set(offset,promise)
-  return promise
-}
-
-function primeAdjacent(){
-  void preloadWeek(weekOffset+1).catch(()=>null)
-  if(weekOffset>0)void preloadWeek(weekOffset-1).catch(()=>null)
+  return 0
 }
 
 function applyChosenDate(){
@@ -59,89 +37,37 @@ function updateChosenDate(button:HTMLButtonElement){
   if(!day||!grid)return
   const index=Array.from(grid.children).indexOf(day)
   if(index<0)return
-  const date=addDays(mondayOf(new Date()),weekOffset*7+index)
+  const date=addDays(mondayOf(new Date()),visibleWeekOffset()*7+index)
   chosenDateText=`${weekday(date)}, ${ddmm(date)}`
   chosenTimeText=button.querySelector('span')?.textContent||'Selecione um horário'
   window.setTimeout(applyChosenDate,0)
 }
 
-function installCachedFetch(offset:number,data:CachedWeek){
-  const path=weekPath(offset)
-  const originalFetch=window.fetch.bind(window)
-  let used=false
-  window.fetch=((input:RequestInfo|URL,init?:RequestInit)=>{
-    const url=typeof input==='string'?input:input instanceof URL?input.toString():input.url
-    if(!used&&url.includes('/api/availability?')&&url.includes(path.split('?')[1])){
-      used=true
-      window.fetch=originalFetch
-      return Promise.resolve(new Response(data.body,{status:data.status,headers:{'content-type':data.contentType}}))
-    }
-    return originalFetch(input,init)
-  }) as typeof window.fetch
-  window.setTimeout(()=>{if(!used)window.fetch=originalFetch},1200)
-}
-
-async function switchWeek(button:HTMLButtonElement,direction:1|-1){
-  const nextOffset=Math.max(0,weekOffset+direction)
-  if(nextOffset===weekOffset&&direction<0)return
-  const host=document.querySelector<HTMLElement>('.patient-stable-view')
-  host?.classList.add('week-changing')
-  chosenDateText=''
-  chosenTimeText=''
-  try{
-    const data=await preloadWeek(nextOffset)
-    installCachedFetch(nextOffset,data)
-    weekOffset=nextOffset
-    bypass=true
-    button.click()
-    bypass=false
-    window.setTimeout(primeAdjacent,0)
-  }catch{
-    weekOffset=nextOffset
-    bypass=true
-    button.click()
-    bypass=false
-  }finally{
-    window.setTimeout(()=>host?.classList.remove('week-changing'),40)
-  }
-}
-
-function schedulePrime(){
-  ;[80,250].forEach(delay=>window.setTimeout(()=>{
-    if(document.querySelector('.patient-week-nav'))primeAdjacent()
-  },delay))
-}
-
 export function installPatientWeekPolish(){
   if(installed)return
   installed=true
-  schedulePrime()
+
+  // A navegação de semanas fica totalmente a cargo do portal do paciente.
+  // Este módulo agora só preserva a data/horário escolhidos, sem fazer fetch,
+  // pré-carregamento ou interceptar cliques. Isso evita o lag e o duplo fluxo.
   document.addEventListener('click',event=>{
     const target=event.target as HTMLElement|null
     const slot=target?.closest<HTMLButtonElement>('.patient-slot[data-slot-id]')
     if(slot){updateChosenDate(slot);return}
-    const next=target?.closest<HTMLButtonElement>('[data-week-next]')
-    const prev=target?.closest<HTMLButtonElement>('[data-week-prev]')
-    if(!next&&!prev)return
-    if(bypass)return
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    void switchWeek((next||prev)!,next?1:-1)
-  },true)
-  document.addEventListener('click',event=>{
-    const target=event.target as HTMLElement|null
-    const tab=target?.closest<HTMLButtonElement>('[data-patient-tab="agenda"]')
-    if(tab){chosenDateText='';chosenTimeText='';weekCache.delete(weekOffset);schedulePrime()}
+    if(target?.closest('[data-week-next],[data-week-prev],[data-patient-tab="agenda"]')){
+      chosenDateText=''
+      chosenTimeText=''
+    }
     if(target?.closest('[data-reserve]')){
-      weekCache.delete(weekOffset)
       ;[0,80,180,350,700].forEach(delay=>window.setTimeout(applyChosenDate,delay))
     }
   },true)
+
   const observer=new MutationObserver(records=>{
     if(!chosenDateText||!chosenTimeText)return
     const changed=records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node instanceof HTMLElement&&(node.matches('.patient-booking-choice,.patient-booking-box')||Boolean(node.querySelector?.('.patient-booking-choice,.patient-booking-box')))))
     if(changed)window.setTimeout(applyChosenDate,0)
   })
   observer.observe(document.body,{childList:true,subtree:true})
-  window.addEventListener('pageshow',()=>{weekCache.clear();schedulePrime();window.setTimeout(applyChosenDate,0)})
+  window.addEventListener('pageshow',()=>window.setTimeout(applyChosenDate,0))
 }
