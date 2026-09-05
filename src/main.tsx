@@ -94,6 +94,20 @@ safeInstall('terminologia',installTerminologyEnhancer)
 safeInstall('senhas',installPasswordEnhancer)
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><RoutedApp/></AppErrorBoundary></React.StrictMode>)
 
+let patientModulesInstalled=false
+function installPatientModules(){
+  if(patientModulesInstalled)return
+  patientModulesInstalled=true
+  safeInstall('sessões padrão do paciente',installPatientDefaultSessionsEnhancer)
+  safeInstall('portal do paciente',installPatientPortalEnhancer)
+  safeInstall('semana do paciente',installPatientWeekPolish)
+  safeInstall('exclusão de conta do paciente',installPatientSecurityDeletePolish)
+  safeInstall('mensagens do paciente',installPatientMessageEnhancer)
+  safeInstall('sincronização de rota do paciente',installPatientRouteSync)
+  safeInstall('gestão de sessões',installSessionManagementUi)
+  safeInstall('correções do fluxo do paciente',installPatientFlowHotfix)
+}
+
 if(isAdminPath){
   // Somente os módulos administrativos observam o DOM do painel.
   safeInstall('espaço do paciente',installAdminPatientWorkspaceEnhancer)
@@ -113,20 +127,28 @@ if(isAdminPath){
   safeInstall('mensagens administrativas',installAdminMessagesEnhancer)
   safeInstall('gestão de sessões',installSessionManagementUi)
   safeInstall('controle Receita Saúde',installAdminReceitaSaudeEnhancer)
-}else if(isPatientPath){
-  safeInstall('sessões padrão do paciente',installPatientDefaultSessionsEnhancer)
-  safeInstall('portal do paciente',installPatientPortalEnhancer)
-  safeInstall('semana do paciente',installPatientWeekPolish)
-  safeInstall('exclusão de conta do paciente',installPatientSecurityDeletePolish)
-  safeInstall('mensagens do paciente',installPatientMessageEnhancer)
-  safeInstall('sincronização de rota do paciente',installPatientRouteSync)
-  safeInstall('gestão de sessões',installSessionManagementUi)
-  safeInstall('correções do fluxo do paciente',installPatientFlowHotfix)
 }else{
-  safeInstall('convite da plataforma',installPlatformInviteEnhancer)
-  safeInstall('preços',installPricingUiEnhancer)
-  safeInstall('apresentação profissional',installProfessionalPresentationEnhancer)
-  safeInstall('contato',installContactSectionEnhancer)
-  safeInstall('CTA da página inicial',installHomepageCtaSafe)
-  safeInstall('links de privacidade',installPrivacyLinksSafe)
+  if(isPatientPath)installPatientModules()
+  else{
+    // O login pode trocar o App público pelo portal sem recarregar a página.
+    // Instala os módulos do paciente somente quando o portal realmente aparece.
+    const root=document.getElementById('root')
+    const detectPatient=()=>{
+      if(document.querySelector('.patient-page')){installPatientModules();return true}
+      return false
+    }
+    if(!detectPatient()&&root){
+      const observer=new MutationObserver(()=>{if(detectPatient())observer.disconnect()})
+      observer.observe(root,{childList:true,subtree:true})
+      window.setTimeout(()=>observer.disconnect(),30000)
+    }
+  }
+  if(!isPatientPath){
+    safeInstall('convite da plataforma',installPlatformInviteEnhancer)
+    safeInstall('preços',installPricingUiEnhancer)
+    safeInstall('apresentação profissional',installProfessionalPresentationEnhancer)
+    safeInstall('contato',installContactSectionEnhancer)
+    safeInstall('CTA da página inicial',installHomepageCtaSafe)
+    safeInstall('links de privacidade',installPrivacyLinksSafe)
+  }
 }
