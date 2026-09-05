@@ -26,6 +26,7 @@ import { handleRecurringCheckout } from './recurring-checkout'
 import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile'
 import { handleClinicalApi } from './clinical-api'
 import { handleAdminPatientOverview } from './admin-patient-overview'
+import { runEmailNotificationTasks } from './email-notifications'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -129,6 +130,6 @@ export default {
     catch (error) { console.error('Schema/bootstrap error:', error instanceof Error ? error.message : String(error)); return withSecurityHeaders(apiError('O sistema está temporariamente indisponível. Tente novamente em alguns instantes.'), path) }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await runScheduledSessionTasks(env) })())
+    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await runScheduledSessionTasks(env); await runEmailNotificationTasks(env) })())
   },
 }
