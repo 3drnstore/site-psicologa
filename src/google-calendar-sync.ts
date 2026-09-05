@@ -1,6 +1,6 @@
 import type { Env } from './types'
 
-const SYNC_TTL_MS=5*60*1000
+const SYNC_TTL_MS=60*1000
 const PREFIX_SLOT='google_calendar_slot:'
 const PREFIX_EVENT='google_calendar_event:'
 
