@@ -42,6 +42,7 @@ import { installSessionManagementUi } from './session-management-ui'
 import { installPatientFlowHotfix } from './patient-flow-hotfix'
 import { installAdminReceitaSaudeEnhancer } from './admin-receita-saude-enhancer'
 import { installAdminFinanceEnhancer } from './admin-finance-enhancer'
+import { installFaqPaymentPolicyEnhancer } from './faq-payment-policy-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -150,5 +151,6 @@ if(isAdminPath){
     safeInstall('contato',installContactSectionEnhancer)
     safeInstall('CTA da página inicial',installHomepageCtaSafe)
     safeInstall('links de privacidade',installPrivacyLinksSafe)
+    safeInstall('política de pagamento e reagendamento',installFaqPaymentPolicyEnhancer)
   }
 }
