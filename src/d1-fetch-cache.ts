@@ -16,10 +16,12 @@ const TTL:Record<string,number>={
   '/api/admin/patients':5*60*1000,
   '/api/admin/settings':10*60*1000,
   '/api/admin/availability-v2':2*60*1000,
+  '/api/admin/finance-statement':30*1000,
+  '/api/admin/receita-saude':30*1000,
 }
-const ERROR_TTL=30000
 const PAYMENT_STATUS_TTL=15000
 const AUTH_STATE_PATHS=new Set(['/api/me','/api/admin/me'])
+let adminWarmScheduled=false
 
 function sameOriginUrl(input:RequestInfo|URL){
   try{
@@ -32,13 +34,23 @@ function ttlFor(path:string){
   if(TTL[path])return TTL[path]
   if(path.startsWith('/api/availability?'))return TTL['/api/availability']
   if(path.startsWith('/api/admin/availability-v2?'))return TTL['/api/admin/availability-v2']
+  if(path.startsWith('/api/admin/finance-statement?'))return TTL['/api/admin/finance-statement']
   if(path.startsWith('/api/payments/status/'))return PAYMENT_STATUS_TTL
   return 0
 }
 
 function cacheKey(url:URL){return `${url.pathname}${url.search}`}
 function responseFrom(entry:CacheEntry){return new Response(entry.body,{status:entry.status,statusText:entry.statusText,headers:new Headers(entry.headers)})}
-function clearPortalCache(){cache.clear();pending.clear()}
+function clearPortalCache(){cache.clear();pending.clear();adminWarmScheduled=false}
+
+function warmAdminData(){
+  if(adminWarmScheduled||!window.location.pathname.startsWith('/admin'))return
+  adminWarmScheduled=true
+  window.setTimeout(()=>{
+    const paths=['/api/admin/appointments','/api/admin/patients','/api/admin/settings']
+    paths.forEach(path=>void window.fetch(path,{credentials:'include'}).catch(()=>{}))
+  },60)
+}
 
 export function installD1FetchCache(){
   if((window as any).__d1FetchCacheInstalled)return
@@ -58,7 +70,13 @@ export function installD1FetchCache(){
       return response
     }
 
-    if(AUTH_STATE_PATHS.has(path)||init?.cache==='no-store'||path==='/api/admin/clinical-vault'||/^\/api\/admin\/patients\/\d+$/.test(path)){
+    if(AUTH_STATE_PATHS.has(path)){
+      const response=await originalFetch(input as any,{...init,cache:'no-store'})
+      if(path==='/api/admin/me'&&response.ok)warmAdminData()
+      return response
+    }
+
+    if(init?.cache==='no-store'||path==='/api/admin/clinical-vault'||/^\/api\/admin\/patients\/\d+$/.test(path)){
       return originalFetch(input as any,{...init,cache:'no-store'})
     }
 
@@ -75,8 +93,8 @@ export function installD1FetchCache(){
     const task=(async()=>{
       const response=await originalFetch(input as any,{...init,cache:'no-store'})
       const body=await response.clone().text()
-      const entry:CacheEntry={expires:Date.now()+(response.ok?ttl:ERROR_TTL),status:response.status,statusText:response.statusText,headers:[...response.headers.entries()],body}
-      cache.set(key,entry)
+      const entry:CacheEntry={expires:Date.now()+ttl,status:response.status,statusText:response.statusText,headers:[...response.headers.entries()],body}
+      if(response.ok)cache.set(key,entry)
       return entry
     })()
     pending.set(key,task)
