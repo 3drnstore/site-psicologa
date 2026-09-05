@@ -37,8 +37,9 @@ function brDateToYmd(value:string){
 }
 function enhanceCancelDay(){
   const title=(document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim();if(title!=='Agenda')return
-  const actions=document.querySelector<HTMLElement>('.agenda-actions');if(!actions||actions.querySelector('[data-cancel-day]'))return
-  const button=document.createElement('button');button.type='button';button.dataset.cancelDay='1';button.className='admin-cancel-day';button.textContent='Cancelar agenda do dia';actions.appendChild(button)
+  const actions=document.querySelector<HTMLElement>('.agenda-actions');if(!actions)return
+  const stateButtons=actions.querySelector<HTMLElement>('.agenda-state-buttons');if(!stateButtons||stateButtons.querySelector('[data-cancel-day]'))return
+  const button=document.createElement('button');button.type='button';button.dataset.cancelDay='1';button.className='admin-cancel-day';button.textContent='Cancelar agenda do dia';stateButtons.appendChild(button)
   button.addEventListener('click',async()=>{const entered=prompt('Qual dia da agenda precisa ser cancelado? Use DD/MM/AA ou DD/MM/AAAA.',localBrDate());if(!entered)return;const date=brDateToYmd(entered);if(!date){alert('Data inválida. Informe no formato DD/MM/AA ou DD/MM/AAAA, por exemplo 14/09/26 ou 14/09/2026.');return}const reason=prompt('Informe o motivo para os pacientes, ou deixe em branco para não informar.','')??'';if(!confirm(`Cancelar a agenda de ${entered.trim()}? Os pacientes confirmados serão avisados e ficarão aguardando reagendamento.`))return;button.disabled=true;try{const r=await api('/api/admin/agenda/cancel-day',{method:'POST',body:JSON.stringify({date,reason})});alert(`Agenda cancelada. ${r.affected} paciente(s) confirmado(s) afetado(s).`);window.location.reload()}catch(e){alert(e instanceof Error?e.message:'Não foi possível cancelar a agenda.');button.disabled=false}})
 }
 
