@@ -4,6 +4,7 @@ const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 const dateLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',timeZone:'America/Sao_Paulo'}).format(new Date(v))
 const dateTimeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(v))
 const timeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(v))
+const MAX_EMAIL_ATTEMPTS=4
 
 function subjectFor(kind:string){
   const map:Record<string,string>={
@@ -17,6 +18,12 @@ function subjectFor(kind:string){
     appointment_reminder:'Lembrete da sua consulta',
   }
   return map[kind]||'Atualização sobre sua consulta'
+}
+
+function nextRetryAt(attemptCount:number){
+  const delaysMinutes=[15,60,360]
+  const delay=delaysMinutes[Math.min(Math.max(attemptCount-1,0),delaysMinutes.length-1)]
+  return new Date(Date.now()+delay*60000).toISOString()
 }
 
 async function sendResend(env:Env,to:string,subject:string,message:string,actionUrl?:string){
@@ -33,11 +40,11 @@ async function deliver(env:Env,patientId:number,appointmentId:number|null,kind:s
   const patient=await env.DB.prepare(`SELECT email FROM patients WHERE id=?`).bind(patientId).first<any>()
   if(!patient?.email)return false
   const id=crypto.randomUUID(),key=`${dedupeKey}:email`
-  const inserted=await env.DB.prepare(`INSERT OR IGNORE INTO patient_notifications(id,patient_id,appointment_id,kind,channel,status,message,payload_json,dedupe_key) VALUES(?,?,?,?,?,'sending',?,?,?)`).bind(id,patientId,appointmentId,kind,'email',message,JSON.stringify(payload),key).run()
+  const inserted=await env.DB.prepare(`INSERT OR IGNORE INTO patient_notifications(id,patient_id,appointment_id,kind,channel,status,message,payload_json,dedupe_key,retry_count,last_attempt_at) VALUES(?,?,?,?,?,'sending',?,?,?,?,CURRENT_TIMESTAMP)`).bind(id,patientId,appointmentId,kind,'email',message,JSON.stringify(payload),key,1).run()
   if(!Number(inserted.meta.changes||0))return false
   const result=await sendResend(env,String(patient.email),subjectFor(kind),message,String(payload.action_url||'' )||undefined)
-  if(result.ok){await env.DB.prepare(`UPDATE patient_notifications SET status='sent',sent_at=CURRENT_TIMESTAMP,error_message=NULL WHERE id=?`).bind(id).run();return true}
-  await env.DB.prepare(`UPDATE patient_notifications SET status='failed',error_message=? WHERE id=?`).bind(result.error,id).run()
+  if(result.ok){await env.DB.prepare(`UPDATE patient_notifications SET status='sent',sent_at=CURRENT_TIMESTAMP,error_message=NULL,next_retry_at=NULL WHERE id=?`).bind(id).run();return true}
+  await env.DB.prepare(`UPDATE patient_notifications SET status='failed',error_message=?,next_retry_at=? WHERE id=?`).bind(result.error,nextRetryAt(1),id).run()
   return false
 }
 
@@ -69,8 +76,16 @@ async function appointmentReminders(env:Env){
 
 async function retryFailed(env:Env){
   if(!env.RESEND_API_KEY||!env.EMAIL_FROM)return
-  const rows=await env.DB.prepare(`SELECT n.id,n.patient_id,n.appointment_id,n.kind,n.message,n.payload_json,p.email FROM patient_notifications n JOIN patients p ON p.id=n.patient_id WHERE n.channel='email' AND n.status='failed' AND n.created_at>=datetime('now','-2 days') ORDER BY n.created_at LIMIT 20`).all<any>()
-  for(const row of rows.results||[]){const payload=JSON.parse(row.payload_json||'{}');const result=await sendResend(env,row.email,subjectFor(row.kind),row.message,payload.action_url);if(result.ok)await env.DB.prepare(`UPDATE patient_notifications SET status='sent',sent_at=CURRENT_TIMESTAMP,error_message=NULL WHERE id=?`).bind(row.id).run()}
+  const rows=await env.DB.prepare(`SELECT n.id,n.patient_id,n.appointment_id,n.kind,n.message,n.payload_json,n.retry_count,p.email FROM patient_notifications n JOIN patients p ON p.id=n.patient_id WHERE n.channel='email' AND n.status='failed' AND COALESCE(n.retry_count,0)<? AND n.created_at>=datetime('now','-2 days') AND (n.next_retry_at IS NULL OR n.next_retry_at<=CURRENT_TIMESTAMP) ORDER BY n.created_at LIMIT 20`).bind(MAX_EMAIL_ATTEMPTS).all<any>()
+  for(const row of rows.results||[]){
+    const payload=JSON.parse(row.payload_json||'{}')
+    const attempt=Math.max(1,Number(row.retry_count||0)+1)
+    await env.DB.prepare(`UPDATE patient_notifications SET status='sending',retry_count=?,last_attempt_at=CURRENT_TIMESTAMP WHERE id=?`).bind(attempt,row.id).run()
+    const result=await sendResend(env,row.email,subjectFor(row.kind),row.message,payload.action_url)
+    if(result.ok){await env.DB.prepare(`UPDATE patient_notifications SET status='sent',sent_at=CURRENT_TIMESTAMP,error_message=NULL,next_retry_at=NULL WHERE id=?`).bind(row.id).run();continue}
+    const next=attempt<MAX_EMAIL_ATTEMPTS?nextRetryAt(attempt):null
+    await env.DB.prepare(`UPDATE patient_notifications SET status='failed',error_message=?,next_retry_at=? WHERE id=?`).bind(result.error,next,row.id).run()
+  }
 }
 
 export async function runEmailNotificationTasks(env:Env){
