@@ -1,4 +1,5 @@
 import { readCookie, sha256 } from './auth'
+import { syncGoogleCalendarAvailability } from './google-calendar-sync'
 import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
@@ -74,6 +75,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || new Date(Date.now()+60*86400000).toISOString()
+    await syncGoogleCalendarAvailability(env,from,to).catch(error=>console.error('Google Calendar public sync:',error instanceof Error?error.message:String(error)))
     const result = await env.DB.prepare(`
       SELECT id,starts_at,ends_at,status,
         CASE WHEN status='free' THEN 'free' WHEN status='blocked' THEN 'blocked' ELSE 'occupied' END AS public_status
@@ -94,6 +96,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || new Date(Date.now()+730*86400000).toISOString()
+    const googleCalendar=await syncGoogleCalendarAvailability(env,from,to).catch(error=>({configured:true,synced:false,error:error instanceof Error?error.message:String(error)}))
     let slots:any
     if (await tableExists(env,'appointments') && await tableExists(env,'patients')) {
       slots = await env.DB.prepare(`
@@ -112,7 +115,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
       slots = await env.DB.prepare(`SELECT id,starts_at,ends_at,status,COALESCE(public_visibility,'visible') AS public_visibility,COALESCE(source,'manual') AS source,recurring_block_id FROM availability WHERE starts_at>=? AND starts_at<=? ORDER BY starts_at`).bind(from,to).all<any>()
     }
     const rules = await env.DB.prepare(`SELECT * FROM recurring_blocks ORDER BY active DESC,weekday,start_time`).all<any>()
-    return json({ ok:true, slots:slots.results||[], recurring_blocks:rules.results||[] })
+    return json({ ok:true, slots:slots.results||[], recurring_blocks:rules.results||[], google_calendar:googleCalendar })
   }
 
   const deleteMatch = path.match(/^\/api\/admin\/availability\/(\d+)$/)
