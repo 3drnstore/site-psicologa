@@ -9,12 +9,12 @@ async function admin(request:Request,env:Env){
   return env.DB.prepare(`SELECT a.id,a.email,a.display_name FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),nowIso()).first<any>()
 }
 
-async function token(env:Env){
-  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{ok:false,error:'missing_credentials'} as const
+async function token(env:Env):Promise<{ok:true;accessToken:string}|{ok:false;error:string;detail:string}>{
+  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{ok:false,error:'missing_credentials',detail:''}
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'})})
   const body=await r.json().catch(()=>({})) as any
-  if(!r.ok||!body.access_token)return{ok:false,error:`token_${r.status}`,detail:String(body.error||body.error_description||'')} as const
-  return{ok:true,accessToken:String(body.access_token)} as const
+  if(!r.ok||!body.access_token)return{ok:false,error:`token_${r.status}`,detail:String(body.error||body.error_description||'')}
+  return{ok:true,accessToken:String(body.access_token)}
 }
 
 function safeEvent(e:any){return{id:String(e?.id||''),summary:String(e?.summary||'(sem título)'),status:String(e?.status||''),transparency:String(e?.transparency||'opaque'),start:e?.start?.dateTime||e?.start?.date||null,end:e?.end?.dateTime||e?.end?.date||null,portal_source:e?.extendedProperties?.private?.portal_source||null,portal_kind:e?.extendedProperties?.private?.portal_kind||null}}
