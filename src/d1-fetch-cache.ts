@@ -10,12 +10,12 @@ const cache=new Map<string,CacheEntry>()
 const pending=new Map<string,PendingEntry>()
 
 const TTL:Record<string,number>={
-  '/api/availability':10*60*1000,
+  '/api/availability':60*1000,
   '/api/appointments/mine':5*60*1000,
   '/api/admin/appointments':2*60*1000,
   '/api/admin/patients':5*60*1000,
   '/api/admin/settings':10*60*1000,
-  '/api/admin/availability-v2':2*60*1000,
+  '/api/admin/availability-v2':60*1000,
   '/api/admin/finance-statement':30*1000,
   '/api/admin/receita-saude':30*1000,
 }
