@@ -1,9 +1,10 @@
 import type { Env } from './types'
 
-const SYNC_TTL_MS=60*1000
+const SYNC_TTL_MS=10*1000
 const PREFIX_SLOT='google_calendar_slot:'
 const PREFIX_EVENT='google_calendar_event:'
 const AVAILABILITY_EVENT_KEY='google_availability_event:'
+const GOOGLE_SUMMARY_KEY='google_calendar_summary:'
 
 export type GoogleCalendarWriteResult={ok:boolean;stage:string;status?:number;error?:string;event_id?:string}
 
@@ -26,9 +27,7 @@ async function googleWriteError(response:Response,stage:string):Promise<GoogleCa
     const status=String(apiError?.status||'').trim()
     const parts=[apiMessage,status&&status!==apiMessage?status:'',reason&&reason!==apiMessage?reason:''].filter(Boolean)
     if(parts.length)message=parts.join(' | ')
-  }catch{
-    try{const text=(await response.text()).trim();if(text)message=text.slice(0,500)}catch{}
-  }
+  }catch{}
   return{ok:false,stage,status:response.status,error:message.slice(0,500)}
 }
 
@@ -128,32 +127,49 @@ export async function syncGoogleCalendarAvailability(env:Env,from:string,to:stri
   const token=await accessToken(env);if(!token)return{configured:true,synced:false,error:'token'}
   await markInactivePortalAppointments(env)
   const min=new Date(from).toISOString(),max=new Date(to).toISOString()
-  const activeAppointments=await env.DB.prepare(`SELECT a.id FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status IN ('pending_payment','confirmed') AND av.starts_at<? AND av.ends_at>?`).bind(max,min).all<any>()
-  let appointmentSyncFailures=0;for(const row of activeAppointments.results||[])if(!(await syncPortalAppointmentToGoogle(env,Number(row.id))))appointmentSyncFailures++
-  const localAvailability=await env.DB.prepare(`SELECT id FROM availability WHERE status IN ('blocked','occupied') AND COALESCE(source,'manual') NOT LIKE 'google_calendar_%' AND starts_at<? AND ends_at>?`).bind(max,min).all<any>()
-  let availabilitySyncFailures=0;for(const row of localAvailability.results||[])if(!(await syncPortalAvailabilityToGoogle(env,Number(row.id))))availabilitySyncFailures++
 
+  // Esta rota é usada para LEITURA da agenda. Escritas Portal -> Google acontecem
+  // nos próprios fluxos de reserva/bloqueio/reagendamento. Não repetimos todas
+  // as escritas a cada troca de semana, pois isso deixava a navegação travada.
   const url=new URL(eventUrl(env));url.searchParams.set('timeMin',min);url.searchParams.set('timeMax',max);url.searchParams.set('singleEvents','true');url.searchParams.set('orderBy','startTime');url.searchParams.set('maxResults','2500')
-  const response=await fetch(url.toString(),{headers:{authorization:`Bearer ${token}`,accept:'application/json'}});if(!response.ok)return{configured:true,synced:false,error:`google_${response.status}`,appointment_sync_failures:appointmentSyncFailures,availability_sync_failures:availabilitySyncFailures}
+  const response=await fetch(url.toString(),{headers:{authorization:`Bearer ${token}`,accept:'application/json'}});if(!response.ok)return{configured:true,synced:false,error:`google_${response.status}`}
   const data=await response.json() as any,events=(data.items||[]).filter((e:any)=>e&&e.status!=='cancelled'&&e.transparency!=='transparent')
   const localEvents=await env.DB.prepare(`SELECT google_calendar_event_id FROM appointments WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>''`).all<any>()
   const availabilityEvents=await env.DB.prepare(`SELECT value FROM settings WHERE key LIKE ?`).bind(`${AVAILABILITY_EVENT_KEY}%`).all<any>()
   const localIds=new Set([...(localEvents.results||[]).map((r:any)=>String(r.google_calendar_event_id)),...(availabilityEvents.results||[]).map((r:any)=>String(r.value))])
+
+  const importedRows=await env.DB.prepare(`SELECT id,source,status FROM availability WHERE (source LIKE 'google_calendar_slot:%' OR source LIKE 'google_calendar_event:%') AND starts_at<? AND ends_at>?`).bind(max,min).all<any>()
+  const importedSources=new Set((importedRows.results||[]).map((r:any)=>String(r.source||'')))
   const activeSources=new Set<string>()
+  const labelWrites:any[]=[]
   let importedGoogleEvents=0
+
   for(const event of events){
     const eventId=String(event.id||'');if(!eventId||localIds.has(eventId))continue
     const range=eventRange(event);if(!range)continue
-    const existingImported=await env.DB.prepare(`SELECT id,source FROM availability WHERE source IN (?,?)`).bind(`${PREFIX_SLOT}${eventId}`,`${PREFIX_EVENT}${eventId}`).all<any>()
-    if((existingImported.results||[]).length){for(const row of existingImported.results||[])activeSources.add(String(row.source));importedGoogleEvents++;continue}
+    const summary=String(event.summary||'Compromisso no Google').trim().slice(0,240)||'Compromisso no Google'
+    labelWrites.push(env.DB.prepare(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(`${GOOGLE_SUMMARY_KEY}${eventId}`,summary))
+
+    const slotSource=`${PREFIX_SLOT}${eventId}`,eventSource=`${PREFIX_EVENT}${eventId}`
+    if(importedSources.has(slotSource)||importedSources.has(eventSource)){
+      if(importedSources.has(slotSource))activeSources.add(slotSource)
+      if(importedSources.has(eventSource))activeSources.add(eventSource)
+      importedGoogleEvents++
+      continue
+    }
+
     const overlaps=await env.DB.prepare(`SELECT id,status,source FROM availability WHERE starts_at<? AND ends_at>? ORDER BY starts_at`).bind(range.ends_at,range.starts_at).all<any>()
     const free=(overlaps.results||[]).filter((r:any)=>String(r.status)==='free'&&!String(r.source||'').startsWith('google_calendar_'))
-    if(free.length){const source=`${PREFIX_SLOT}${eventId}`;activeSources.add(source);for(const row of free)await env.DB.prepare(`UPDATE availability SET status='occupied',public_visibility='visible',source=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(source,row.id).run();importedGoogleEvents++;continue}
+    if(free.length){activeSources.add(slotSource);const updates=free.map((row:any)=>env.DB.prepare(`UPDATE availability SET status='occupied',public_visibility='visible',source=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(slotSource,row.id));if(updates.length)await env.DB.batch(updates);importedGoogleEvents++;continue}
     if((overlaps.results||[]).some((r:any)=>['held','confirmed'].includes(String(r.status)))||(overlaps.results||[]).length)continue
-    const source=`${PREFIX_EVENT}${eventId}`;activeSources.add(source);for(const block of standardPortalRanges(range))await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(block.starts_at,block.ends_at,source).run();importedGoogleEvents++
+    activeSources.add(eventSource)
+    const blocks=standardPortalRanges(range),inserts=blocks.map(block=>env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(block.starts_at,block.ends_at,eventSource))
+    if(inserts.length)await env.DB.batch(inserts)
+    importedGoogleEvents++
   }
-  const imported=await env.DB.prepare(`SELECT id,source,status FROM availability WHERE (source LIKE 'google_calendar_slot:%' OR source LIKE 'google_calendar_event:%') AND starts_at<? AND ends_at>?`).bind(max,min).all<any>()
-  for(const row of imported.results||[]){const source=String(row.source||'');if(activeSources.has(source))continue;if(source.startsWith(PREFIX_EVENT))await env.DB.prepare(`DELETE FROM availability WHERE id=? AND source=?`).bind(row.id,source).run();else if(source.startsWith(PREFIX_SLOT)&&String(row.status)==='occupied')await env.DB.prepare(`UPDATE availability SET status='free',source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=? AND source=?`).bind(row.id,source).run()}
+
+  if(labelWrites.length)await env.DB.batch(labelWrites).catch(()=>null)
+  for(const row of importedRows.results||[]){const source=String(row.source||'');if(activeSources.has(source))continue;if(source.startsWith(PREFIX_EVENT))await env.DB.prepare(`DELETE FROM availability WHERE id=? AND source=?`).bind(row.id,source).run();else if(source.startsWith(PREFIX_SLOT)&&String(row.status)==='occupied')await env.DB.prepare(`UPDATE availability SET status='free',source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=? AND source=?`).bind(row.id,source).run()}
   await markSync(env,syncKey)
-  return{configured:true,synced:true,events:events.length,imported_google_events:importedGoogleEvents,appointment_sync_failures:appointmentSyncFailures,availability_sync_failures:availabilitySyncFailures}
+  return{configured:true,synced:true,events:events.length,imported_google_events:importedGoogleEvents}
 }
