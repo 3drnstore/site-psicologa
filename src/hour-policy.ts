@@ -23,8 +23,8 @@ async function syncCalendarEvent(env:Env,appointmentId:number){
 }
 
 export async function normalizeHourlyDeadlines(env:Env){
-  const rows=await env.DB.prepare(`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment' AND a.reservation_kind='recurring'`).all<any>()
-  for(const row of rows.results||[]){const deadline=minusHours(String(row.starts_at),48);await env.DB.prepare(`UPDATE appointments SET reserved_until=?,payment_deadline_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(deadline,deadline,row.id).run()}
+  const rows=await env.DB.prepare(`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment'`).all<any>()
+  for(const row of rows.results||[]){const deadline=minusHours(String(row.starts_at),24);await env.DB.prepare(`UPDATE appointments SET reserved_until=?,payment_deadline_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(deadline,deadline,row.id).run()}
 }
 
 async function handleRecurrencePut(request:Request,env:Env,path:string){
@@ -34,11 +34,11 @@ async function handleRecurrencePut(request:Request,env:Env,path:string){
   const source=await env.DB.prepare(`SELECT a.*,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=? AND a.status='confirmed'`).bind(sourceId,patientId).first<any>();if(!source)return json({ok:false,message:'Escolha uma sessão confirmada deste paciente como referência.'},409)
   const local=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(source.starts_at)),weekdayMap:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6},wd=weekdayMap[local.find(x=>x.type==='weekday')?.value||'Mon'],hh=local.find(x=>x.type==='hour')?.value||'00',mm=local.find(x=>x.type==='minute')?.value||'00',ruleId=crypto.randomUUID()
   await env.DB.prepare(`INSERT INTO patient_recurrence(id,patient_id,cadence_days,weekday,start_time,active,source_appointment_id) VALUES(?,?,?,?,?,1,?) ON CONFLICT(patient_id) DO UPDATE SET cadence_days=excluded.cadence_days,weekday=excluded.weekday,start_time=excluded.start_time,active=1,source_appointment_id=excluded.source_appointment_id,updated_at=CURRENT_TIMESTAMP`).bind(ruleId,patientId,cadence,wd,`${hh}:${mm}`,sourceId).run()
-  const existing=await env.DB.prepare(`SELECT id FROM appointments WHERE recurrence_parent_appointment_id=? LIMIT 1`).bind(sourceId).first<any>();if(existing)return json({ok:true,cadence_days:cadence})
+  const existing=await env.DB.prepare(`SELECT id FROM appointments WHERE recurrence_parent_appointment_id=? LIMIT 1`).bind(sourceId).first<any>();if(existing){await normalizeHourlyDeadlines(env);return json({ok:true,cadence_days:cadence})}
   const startsAt=plusDays(String(source.starts_at),cadence),endsAt=plusDays(String(source.ends_at),cadence);let slot=await env.DB.prepare(`SELECT * FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1`).bind(startsAt,endsAt).first<any>()
   if(slot&&slot.status!=='free')return json({ok:true,cadence_days:cadence,warning:'O próximo horário recorrente já está ocupado.'})
   if(!slot){const ins=await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'held','visible','recurring_patient')`).bind(startsAt,endsAt).run();slot={id:Number(ins.meta.last_row_id)}}else{const claim=await env.DB.prepare(`UPDATE availability SET status='held',source='recurring_patient',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(slot.id).run();if(!Number(claim.meta.changes||0))return json({ok:true,cadence_days:cadence,warning:'O próximo horário recorrente acabou de ser ocupado.'})}
-  const deadline=minusHours(startsAt,48),inserted=await env.DB.prepare(`INSERT INTO appointments(patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state,recurrence_rule_id,recurrence_parent_appointment_id) VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(patientId,slot.id,source.amount_cents,deadline,deadline,'recurring','recurring_reserved',ruleId,sourceId).run(),appointmentId=Number(inserted.meta.last_row_id)
+  const deadline=minusHours(startsAt,24),inserted=await env.DB.prepare(`INSERT INTO appointments(patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state,recurrence_rule_id,recurrence_parent_appointment_id) VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(patientId,slot.id,source.amount_cents,deadline,deadline,'recurring','recurring_reserved',ruleId,sourceId).run(),appointmentId=Number(inserted.meta.last_row_id)
   await sendReservationCreatedEmail(env,appointmentId)
   return json({ok:true,cadence_days:cadence})
 }
@@ -51,7 +51,6 @@ export async function handleHourlyPolicy(request:Request,env:Env,path:string):Pr
   const id=Number(match[1]),data=await request.json().catch(()=>({})) as any
   const appt=await env.DB.prepare(`SELECT a.*,av.starts_at AS old_starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=?`).bind(id,p.id).first<any>()
   if(!appt||appt.status!=='confirmed')return json({ok:false,message:'Esta sessão não pode ser reagendada.'},409)
-  if(String(appt.reservation_kind||'standard')==='standard')return json({ok:false,message:'Consultas reservadas diretamente pelo paciente não possuem reagendamento pelo portal.'},409)
   if(new Date(appt.old_starts_at).getTime()-Date.now()<24*3600000)return json({ok:false,message:'O reagendamento pelo portal é permitido até 24 horas antes da sessão.'},409)
   const newSlot=await env.DB.prepare(`SELECT * FROM availability WHERE id=? AND status='free'`).bind(Number(data.slot_id)).first<any>();if(!newSlot)return json({ok:false,message:'O novo horário não está mais disponível.'},409)
   const claim=await env.DB.prepare(`UPDATE availability SET status='confirmed',public_visibility='visible',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(newSlot.id).run();if(!Number(claim.meta.changes||0))return json({ok:false,message:'O novo horário acabou de ser ocupado.'},409)
