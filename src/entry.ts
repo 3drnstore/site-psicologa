@@ -5,6 +5,7 @@ import { handlePaymentsV2 } from './payments-v2'
 import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
 import { handlePlatformCheckout } from './platform-checkout'
 import { handleInfinitePayCardCheckout } from './infinitepay-card-checkout'
+import { handlePaymentFlowTest } from './payment-flow-test'
 import { handlePlatformPricing } from './platform-pricing'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
@@ -84,6 +85,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     const authV2 = await handleAuthV2(request, env, path); if (authV2) return authV2
   }
 
+  const paymentTest = await handlePaymentFlowTest(request, env, path); if (paymentTest) return paymentTest
   const adminSecurity = await handleAdminSecurity(request, env, path); if (adminSecurity) return adminSecurity
   const platformPricing = await handlePlatformPricing(request, env, path); if (platformPricing) return platformPricing
   const roleBlocked = await guardAdminRole(request, env, path); if (roleBlocked) return roleBlocked
