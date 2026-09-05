@@ -1,8 +1,11 @@
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
-const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(v))
-const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(v))
-const timeOnly=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(v))
+const TZ='America/Sao_Paulo'
+const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',timeZone:TZ}).format(new Date(v))
+const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:TZ}).format(new Date(v))
+const timeOnly=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:TZ}).format(new Date(v))
 const money=(c:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(c)||0)/100)
+function localDay(v:string|Date){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(v instanceof Date?v:new Date(v));const y=Number(parts.find(p=>p.type==='year')?.value||0),m=Number(parts.find(p=>p.type==='month')?.value||0),d=Number(parts.find(p=>p.type==='day')?.value||0);return Math.floor(Date.UTC(y,m-1,d)/86400000)}
+const daysUntil=(v:string)=>localDay(v)-localDay(new Date())
 
 async function api(path:string,init?:RequestInit){
   const r=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
@@ -40,6 +43,12 @@ function showPix(result:any,appointmentId:number){
         if(status)status.textContent='Pagamento confirmado.'
         closed=true
         setTimeout(()=>{overlay.remove();openSessions('Agendamento confirmado!')},400)
+        return
+      }
+      if(r.appointment?.status==='cancelled'){
+        if(status)status.textContent='A reserva foi cancelada porque o prazo de pagamento terminou.'
+        closed=true
+        setTimeout(()=>{overlay.remove();openSessions()},800)
         return
       }
     }catch{}
@@ -83,13 +92,20 @@ function patchRescheduleAgenda(){
   if(button)button.textContent='Confirmar reagendamento'
 }
 
-function sessionRow(a:any,now:number){
-  if(a.status==='pending_payment'&&a.reservation_kind==='recurring'){
-    return `<article class="patient-consult-row patient-consult-row-recurring"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>Reserva recorrente · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
+function sessionRow(a:any){
+  if(a.status==='pending_payment'){
+    const recurring=a.reservation_kind==='recurring'
+    return `<article class="patient-consult-row ${recurring?'patient-consult-row-recurring':''}"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>${recurring?'Reserva recorrente':'Reserva'} · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
   }
   const awaiting=a.workflow_state==='awaiting_reschedule'
-  const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-now>=24*3600000
+  const canReschedule=!awaiting&&a.status==='confirmed'&&daysUntil(a.starts_at)>1
   return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
+}
+
+function historyRow(a:any){
+  const cancelled=a.status==='cancelled'
+  const note=cancelled?(a.workflow_state==='payment_deadline_missed'?'Pagamento não realizado até o prazo.':a.workflow_state==='admin_cancelled'?'Cancelada pela profissional.':(a.cancellation_reason||'Consulta cancelada.')):''
+  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${note?`<small>${esc(note)}</small>`:''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${cancelled?'cancelled':'confirmed'}">${cancelled?'Cancelada':'Confirmada'}</span></div></article>`
 }
 
 let sessionRenderBusy=false
@@ -104,16 +120,20 @@ async function renderReliablePatientSessions(){
   try{
     const data=await api('/api/appointments/mine'),all:any[]=data.appointments||[],now=Date.now()
     const future=all.filter(a=>new Date(a.ends_at||a.starts_at).getTime()>=now&&['confirmed','pending_payment'].includes(a.status)).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime())
-    const history=all.filter(a=>a.status==='confirmed'&&new Date(a.ends_at||a.starts_at).getTime()<now).sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
+    const history=all.filter(a=>a.status==='cancelled'||(a.status==='confirmed'&&new Date(a.ends_at||a.starts_at).getTime()<now)).sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
     const key=JSON.stringify(future.map(a=>[a.id,a.status,a.workflow_state,a.reservation_kind,a.starts_at,a.payment_deadline_at,a.reserved_until]))
     if(first.dataset.patientFlowKey!==key||first.dataset.finalPatientSessions!=='1'){
       first.dataset.patientFlowKey=key
       first.dataset.finalPatientSessions='1'
-      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Sessões confirmadas após pagamento</small></div>${future.length?future.map(a=>sessionRow(a,now)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
+      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Reservas aguardam pagamento até o prazo informado</small></div>${future.length?future.map(a=>sessionRow(a)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
     }
-    if(historyPanel&&historyPanel.dataset.finalPatientHistory!=='1'){
-      historyPanel.dataset.finalPatientHistory='1'
-      historyPanel.innerHTML=`<div class="patient-panel-head"><strong>Histórico</strong><small>Sessões anteriores confirmadas</small></div>${history.length?history.map(a=>`<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span></div><div class="patient-consult-actions"><span class="patient-consult-status confirmed">Confirmada</span></div></article>`).join(''):'<p class="patient-empty">Ainda não há sessões anteriores no seu histórico.</p>'}`
+    if(historyPanel){
+      const historyKey=JSON.stringify(history.map(a=>[a.id,a.status,a.workflow_state,a.starts_at,a.cancellation_reason]))
+      if(historyPanel.dataset.patientHistoryKey!==historyKey||historyPanel.dataset.finalPatientHistory!=='1'){
+        historyPanel.dataset.patientHistoryKey=historyKey
+        historyPanel.dataset.finalPatientHistory='1'
+        historyPanel.innerHTML=`<div class="patient-panel-head"><strong>Histórico</strong><small>Sessões anteriores e reservas canceladas</small></div>${history.length?history.map(historyRow).join(''):'<p class="patient-empty">Ainda não há sessões anteriores no seu histórico.</p>'}`
+      }
     }
     first.querySelectorAll<HTMLButtonElement>('[data-patient-reschedule]').forEach(btn=>{if(btn.dataset.bound==='1')return;btn.dataset.bound='1';btn.addEventListener('click',()=>{sessionStorage.setItem('ps_reschedule_appointment',String(btn.dataset.patientReschedule));document.querySelector<HTMLButtonElement>('[data-patient-tab="agenda"]')?.click()})})
   }catch{}finally{sessionRenderBusy=false}
