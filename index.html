@@ -45,6 +45,27 @@
         else start();
       })();
     </script>
+    <script>
+      (() => {
+        const TITLE = 'Como funcionam o pagamento, o cancelamento e o reagendamento?';
+        const installPolicyFaq = () => {
+          if (location.pathname !== '/' || document.querySelector('[data-consumer-policy-faq="1"]')) return;
+          const grid = document.querySelector('#duvidas .faq-grid');
+          if (!grid) return;
+          const item = document.createElement('details');
+          item.dataset.consumerPolicyFaq = '1';
+          item.innerHTML = `<summary>${TITLE}</summary><div class="consumer-policy-answer"><p><strong>Pagamento:</strong> a reserva feita diretamente pelo portal deve ser paga até 24 horas antes do horário da sessão. Sem a confirmação do pagamento até esse limite, a reserva pode ser cancelada e o horário liberado.</p><p><strong>Reagendamento:</strong> consultas recorrentes já confirmadas podem ser reagendadas pelo portal quando a solicitação for feita com pelo menos 24 horas de antecedência, conforme disponibilidade. A reserva avulsa feita diretamente pelo portal, cujo pagamento pode ocorrer até 24 horas antes da sessão, não oferece reagendamento automático pelo portal.</p><p><strong>Cancelamento e direitos do consumidor:</strong> estas regras não afastam direitos assegurados pela legislação. Nas contratações realizadas pela internet, será respeitado, quando aplicável, o direito de arrependimento previsto no art. 49 do Código de Defesa do Consumidor, inclusive quanto à restituição dos valores pagos. Se o cancelamento decorrer de iniciativa da profissional ou de impossibilidade de prestação do serviço, o paciente poderá optar pelo reagendamento ou pela devolução do valor correspondente. Situações excepcionais serão analisadas de acordo com a legislação aplicável, a boa-fé e o equilíbrio da relação de consumo.</p><p>As condições de pagamento e de alteração do horário são apresentadas antes da contratação para que o paciente possa conhecê-las previamente.</p></div>`;
+          const existing = [...grid.querySelectorAll('details')].find(el => el.querySelector('summary')?.textContent?.includes('cancelar ou remarcar'));
+          if (existing) existing.insertAdjacentElement('afterend', item); else grid.appendChild(item);
+        };
+        const start = () => {
+          installPolicyFaq();
+          const root = document.getElementById('root');
+          if (root) new MutationObserver(installPolicyFaq).observe(root, {childList:true,subtree:true});
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true}); else start();
+      })();
+    </script>
     <meta name="application-name" content="Jacqueline Siqueira • Psicologia" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
