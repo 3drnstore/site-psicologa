@@ -4,8 +4,9 @@ let bypass=false
 let chosenDateText=''
 let chosenTimeText=''
 
-type CachedWeek={body:string;status:number;contentType:string}
+type CachedWeek={body:string;status:number;contentType:string;fetchedAt:number}
 const weekCache=new Map<number,Promise<CachedWeek>>()
+const WEEK_CACHE_TTL_MS=10_000
 
 const mondayOf=(value:Date)=>{const d=new Date(value);d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return d}
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x}
@@ -18,12 +19,20 @@ function weekPath(offset:number){
   return `/api/availability?from=${encodeURIComponent(ymd(start))}&to=${encodeURIComponent(ymd(end))}`
 }
 
-function preloadWeek(offset:number){
-  if(offset<0)return Promise.reject(new Error('Semana inválida'))
-  const cached=weekCache.get(offset)
-  if(cached)return cached
+async function preloadWeek(offset:number,force=false):Promise<CachedWeek>{
+  if(offset<0)throw new Error('Semana inválida')
+  if(!force){
+    const cached=weekCache.get(offset)
+    if(cached){
+      try{
+        const data=await cached
+        if(Date.now()-data.fetchedAt<WEEK_CACHE_TTL_MS)return data
+      }catch{}
+      weekCache.delete(offset)
+    }
+  }
   const promise=fetch(weekPath(offset),{credentials:'include',cache:'no-store'}).then(async response=>({
-    body:await response.text(),status:response.status,contentType:response.headers.get('content-type')||'application/json; charset=utf-8'
+    body:await response.text(),status:response.status,contentType:response.headers.get('content-type')||'application/json; charset=utf-8',fetchedAt:Date.now()
   })).catch(error=>{weekCache.delete(offset);throw error})
   weekCache.set(offset,promise)
   return promise
@@ -93,12 +102,12 @@ async function switchWeek(button:HTMLButtonElement,direction:1|-1){
     button.click()
     bypass=false
   }finally{
-    window.setTimeout(()=>host?.classList.remove('week-changing'),80)
+    window.setTimeout(()=>host?.classList.remove('week-changing'),40)
   }
 }
 
 function schedulePrime(){
-  ;[80,180,350,700].forEach(delay=>window.setTimeout(()=>{
+  ;[80,250].forEach(delay=>window.setTimeout(()=>{
     if(document.querySelector('.patient-week-nav'))primeAdjacent()
   },delay))
 }
@@ -122,8 +131,9 @@ export function installPatientWeekPolish(){
   document.addEventListener('click',event=>{
     const target=event.target as HTMLElement|null
     const tab=target?.closest<HTMLButtonElement>('[data-patient-tab="agenda"]')
-    if(tab){chosenDateText='';chosenTimeText='';schedulePrime()}
+    if(tab){chosenDateText='';chosenTimeText='';weekCache.delete(weekOffset);schedulePrime()}
     if(target?.closest('[data-reserve]')){
+      weekCache.delete(weekOffset)
       ;[0,80,180,350,700].forEach(delay=>window.setTimeout(applyChosenDate,delay))
     }
   },true)
@@ -133,5 +143,5 @@ export function installPatientWeekPolish(){
     if(changed)window.setTimeout(applyChosenDate,0)
   })
   observer.observe(document.body,{childList:true,subtree:true})
-  window.addEventListener('pageshow',()=>{schedulePrime();window.setTimeout(applyChosenDate,0)})
+  window.addEventListener('pageshow',()=>{weekCache.clear();schedulePrime();window.setTimeout(applyChosenDate,0)})
 }
