@@ -1,4 +1,4 @@
-type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string; appointment_id?:number|null; appointment_status?:string|null; patient_id?:number|null; full_name?:string|null; email?:string|null; phone?:string|null }
+type Slot = { id:number; starts_at:string; ends_at:string; status:string; public_visibility:string; source:string; appointment_id?:number|null; appointment_status?:string|null; patient_id?:number|null; full_name?:string|null; email?:string|null; phone?:string|null; google_event_summary?:string|null }
 type Cell = { starts_at:string; ends_at:string; day:Date; hour:number; slot?:Slot }
 type BulkMode='free'|'occupied'|'blocked'
 
@@ -22,8 +22,10 @@ class AdminCalendar {
   selected=new Set<string>()
   notice=''
   busy=false
+  loading=false
   syntheticId=-1
   anchorKey:string|null=null
+  requestSeq=0
 
   constructor(host:HTMLElement){this.host=host}
 
@@ -40,9 +42,14 @@ class AdminCalendar {
   key(c:Cell){return `${c.starts_at}|${c.ends_at}`}
 
   async load(){
+    const seq=++this.requestSeq
+    this.loading=true
+    this.render()
     const start=mondayOf(this.cursor),from=addDays(start,-1),to=addDays(start,6);to.setHours(23,59,59,999)
-    const r=await fetch(`/api/admin/availability-v2?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{credentials:'include'})
+    const r=await fetch(`/api/admin/availability-v2?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{credentials:'include',cache:'no-store'})
     const d=await r.json().catch(()=>({})) as any
+    if(seq!==this.requestSeq)return
+    this.loading=false
     if(!r.ok)throw new Error(d.message||'Não foi possível carregar a agenda.')
     this.slots=d.slots||[]
     this.render()
@@ -55,6 +62,7 @@ class AdminCalendar {
   }
 
   toggle(c:Cell,button:HTMLElement,shiftKey=false){
+    if(this.loading)return
     if(isPastCell(c)){this.notice='Horários passados são somente para consulta e não podem ser alterados.';this.renderNotice();return}
     const k=this.key(c)
     if(shiftKey&&this.anchorKey){
@@ -88,7 +96,7 @@ class AdminCalendar {
   }
 
   async bulk(mode:BulkMode){
-    if(this.busy)return
+    if(this.busy||this.loading)return
     const cells=this.selectedCells()
     if(!cells.length){this.notice='Selecione um ou mais horários futuros primeiro.';this.renderNotice();return}
     this.busy=true
@@ -110,11 +118,20 @@ class AdminCalendar {
     el.textContent=this.notice
   }
 
-  nav(weeks:number){this.cursor=addDays(this.cursor,weeks*7);this.selected.clear();this.anchorKey=null;void this.load()}
+  nav(weeks:number){
+    this.cursor=addDays(this.cursor,weeks*7)
+    this.selected.clear();this.anchorKey=null
+    this.slots=[]
+    void this.load().catch(e=>{this.loading=false;this.notice=e instanceof Error?e.message:String(e);this.render()})
+  }
 
   slotBody(s?:Slot){
+    if(this.loading)return `<span>Carregando…</span>`
     if(s&&['confirmed','pending_payment','held'].includes(String(effectiveStatus(s)))&&s.full_name){
       return `<span class="gc-patient-name gc-patient-link" data-patient-contact="${esc(String(s.id))}">${esc(s.full_name)}</span><span class="gc-patient-status">${effectiveStatus(s)==='confirmed'?'Consulta confirmada':'Reserva • pagamento pendente'}</span>`
+    }
+    if(s&&String(s.source||'').startsWith('google_calendar_')&&s.google_event_summary){
+      return `<span class="gc-patient-name">${esc(s.google_event_summary)}</span><span class="gc-patient-status">Google Agenda</span>`
     }
     return `<span>${statusLabel(s)}</span>`
   }
@@ -159,15 +176,15 @@ class AdminCalendar {
       <div class="agenda-actions">
         <div class="agenda-state-buttons">
           <strong data-selection-count>${this.selected.size} selecionado(s)</strong>
-          <button data-bulk="free">Marcar como livre</button>
-          <button data-bulk="occupied">Marcar como ocupado</button>
-          <button data-bulk="blocked">Marcar como bloqueado</button>
-          <button data-clear>Limpar seleção</button>
+          <button data-bulk="free" ${this.loading?'disabled':''}>Marcar como livre</button>
+          <button data-bulk="occupied" ${this.loading?'disabled':''}>Marcar como ocupado</button>
+          <button data-bulk="blocked" ${this.loading?'disabled':''}>Marcar como bloqueado</button>
+          <button data-clear ${this.loading?'disabled':''}>Limpar seleção</button>
         </div>
-        <small>Horários passados são somente para consulta. Em horários futuros, clique para selecionar e use <strong>Shift + clique</strong> para selecionar uma faixa.</small>
+        <small>${this.loading?'Atualizando agenda…':'Horários passados são somente para consulta. Em horários futuros, clique para selecionar e use <strong>Shift + clique</strong> para selecionar uma faixa.'}</small>
       </div>
       ${this.notice?`<div class="gc-notice">${this.notice}</div>`:''}
-      <div class="work-grid agenda-columns">
+      <div class="work-grid agenda-columns ${this.loading?'is-loading':''}">
         ${days.map(day=>{
           const isToday=day.toDateString()===today.toDateString()
           const cells=Array.from({length:12},(_,i)=>this.cell(day,8+i))
@@ -180,7 +197,7 @@ class AdminCalendar {
                 const past=isPastCell(c)
                 const selected=this.selected.has(this.key(c))
                 const hasAppointment=Boolean(c.slot?.appointment_id&&['confirmed','pending_payment','held'].includes(String(effectiveStatus(c.slot))))
-                return `<button class="work-cell agenda-slot-card ${statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''} ${past?'past-readonly':''}" data-cell="${this.key(c)}" ${past?'aria-disabled="true" title="Horário passado — somente consulta"':''}>
+                return `<button class="work-cell agenda-slot-card ${this.loading?'unset':statusClass(c.slot)} ${selected?'selected':''} ${hasAppointment?'has-appointment':''} ${past?'past-readonly':''}" data-cell="${this.key(c)}" ${this.loading?'disabled':''} ${past&&!this.loading?'aria-disabled="true" title="Horário passado — somente consulta"':''}>
                   <strong class="agenda-slot-time">${fmtTime(c.starts_at)} - ${fmtTime(c.ends_at)}</strong>
                   ${this.slotBody(c.slot)}
                 </button>`
