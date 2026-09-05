@@ -135,7 +135,7 @@ function paymentsMarkup(appointments:Appointment[]){
       <article class="admin-kpi"><small>Pagamentos confirmados</small><strong>${paid.length}</strong><span>Total histórico de consultas pagas</span></article>
     </section>
     <div class="admin-section-title"><div><h2>Pagamentos</h2><p>Pix via Mercado Pago e cartão via InfinitePay.</p></div><span>${ordered.length} lançamento(s)</span></div>
-    <section class="admin-table-card">
+    <section class="admin-table-card admin-payments-table">
       <div class="admin-table-row header"><span>Paciente</span><span>Referência</span><span>Pagamento</span><span>Valor</span></div>
       ${ordered.length?ordered.map(a=>`<div class="admin-table-row"><div><strong>${esc(a.full_name)}</strong><small>${esc(a.email)}</small></div><div><strong>${esc(dateTime(a.starts_at))}</strong><small>${esc(a.payment_provider||'')}</small></div><div><span class="admin-status-chip ${a.paid_at?'paid':a.status==='pending_payment'?'pending':statusClass(a.status)}">${a.paid_at?'Pago':esc(statusLabel(a.status))}</span><small>${esc(paymentMethod(a))}${a.paid_at?` • ${esc(dateTime(a.paid_at))}`:''}</small></div><div><strong>${esc(money(a.amount_cents))}</strong></div></div>`).join(''):`<div style="padding:18px">${empty('Nenhum pagamento registrado.')}</div>`}
     </section>`
