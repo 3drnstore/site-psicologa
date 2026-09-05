@@ -76,11 +76,10 @@ export function installD1FetchCache(){
       return response
     }
 
-    if(init?.cache==='no-store'||path==='/api/admin/clinical-vault'||/^\/api\/admin\/patients\/\d+$/.test(path)){
+    const ttl=ttlFor(`${path}${url.search}`)||ttlFor(path)
+    if(path==='/api/admin/clinical-vault'||/^\/api\/admin\/patients\/\d+$/.test(path)||(!ttl&&init?.cache==='no-store')){
       return originalFetch(input as any,{...init,cache:'no-store'})
     }
-
-    const ttl=ttlFor(`${path}${url.search}`)||ttlFor(path)
     if(!ttl)return originalFetch(input as any,init)
 
     const key=cacheKey(url)
