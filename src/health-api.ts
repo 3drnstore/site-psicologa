@@ -1,7 +1,7 @@
 import { adminAuthSchemaStatus } from './admin-auth-schema'
 import type { Env } from './types'
 
-export const APP_RELEASE = '2026.09.05-hour-policy-admin-cancel-v1'
+export const APP_RELEASE = '2026.09.05-standard-reservation-24h-no-reschedule-v1'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -97,10 +97,12 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
       automation = {
         cron_expected_every_minutes: 15,
         schedule_basis: 'hours',
-        payment_reminder_hours_before: 72,
-        reservation_payment_deadline_hours_before: 48,
+        recurring_payment_reminder_hours_before: 72,
+        recurring_payment_deadline_hours_before: 48,
+        standard_reservation_payment_deadline_hours_before: 24,
         appointment_reminder_hours_before: 24,
-        patient_reschedule_block_hours_before: 24,
+        standard_reservation_patient_reschedule_enabled: false,
+        recurring_patient_reschedule_block_hours_before: 24,
         patient_cancellation_enabled: false,
         admin_cancellation_enabled: true,
         active_recurrence_rules: Number(recurrence?.active_rules || 0),
