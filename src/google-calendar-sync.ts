@@ -21,12 +21,31 @@ function eventRange(event:any){
   return{starts_at:start.toISOString(),ends_at:end.toISOString()}
 }
 
-async function lastSync(env:Env){const row=await env.DB.prepare(`SELECT value FROM settings WHERE key='google_calendar_last_sync_at'`).first<any>();return row?.value?new Date(String(row.value)).getTime():0}
-async function markSync(env:Env){await env.DB.prepare(`INSERT INTO settings(key,value) VALUES('google_calendar_last_sync_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(new Date().toISOString()).run()}
+function rangeSyncKey(from:string,to:string){
+  const fromDay=new Date(from).toISOString().slice(0,10)
+  const toDay=new Date(to).toISOString().slice(0,10)
+  return `google_calendar_last_sync_at:${fromDay}:${toDay}`
+}
+
+async function lastSync(env:Env,key:string){const row=await env.DB.prepare(`SELECT value FROM settings WHERE key=?`).bind(key).first<any>();return row?.value?new Date(String(row.value)).getTime():0}
+async function markSync(env:Env,key:string){await env.DB.prepare(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(key,new Date().toISOString()).run()}
+
+function standardPortalRanges(range:{starts_at:string;ends_at:string}){
+  const eventStart=new Date(range.starts_at),eventEnd=new Date(range.ends_at)
+  const first=new Date(eventStart)
+  first.setMinutes(0,0,0)
+  const blocks:{starts_at:string;ends_at:string}[]=[]
+  for(let cursor=new Date(first);cursor<eventEnd;cursor=new Date(cursor.getTime()+60*60*1000)){
+    const blockEnd=new Date(cursor.getTime()+50*60*1000)
+    if(cursor<eventEnd&&blockEnd>eventStart)blocks.push({starts_at:cursor.toISOString(),ends_at:blockEnd.toISOString()})
+  }
+  return blocks
+}
 
 export async function syncGoogleCalendarAvailability(env:Env,from:string,to:string,force=false){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{configured:false,synced:false}
-  if(!force&&Date.now()-await lastSync(env)<SYNC_TTL_MS)return{configured:true,synced:false,cached:true}
+  const syncKey=rangeSyncKey(from,to)
+  if(!force&&Date.now()-await lastSync(env,syncKey)<SYNC_TTL_MS)return{configured:true,synced:false,cached:true}
   const token=await accessToken(env);if(!token)return{configured:true,synced:false,error:'token'}
   const calendar=encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
   const url=new URL(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events`)
@@ -51,8 +70,12 @@ export async function syncGoogleCalendarAvailability(env:Env,from:string,to:stri
     }
     const hasProtected=(overlaps.results||[]).some((r:any)=>['held','confirmed'].includes(String(r.status)))
     if(hasProtected)continue
+    if((overlaps.results||[]).length)continue
     const source=`${PREFIX_EVENT}${eventId}`;activeSources.add(source)
-    await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(range.starts_at,range.ends_at,source).run()
+    const blocks=standardPortalRanges(range)
+    for(const block of blocks){
+      await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(block.starts_at,block.ends_at,source).run()
+    }
   }
   const imported=await env.DB.prepare(`SELECT id,source,status FROM availability WHERE (source LIKE 'google_calendar_slot:%' OR source LIKE 'google_calendar_event:%') AND starts_at<? AND ends_at>?`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
   for(const row of imported.results||[]){
@@ -60,6 +83,6 @@ export async function syncGoogleCalendarAvailability(env:Env,from:string,to:stri
     if(source.startsWith(PREFIX_EVENT))await env.DB.prepare(`DELETE FROM availability WHERE id=? AND source=?`).bind(row.id,source).run()
     else if(source.startsWith(PREFIX_SLOT)&&String(row.status)==='occupied')await env.DB.prepare(`UPDATE availability SET status='free',source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=? AND source=?`).bind(row.id,source).run()
   }
-  await markSync(env)
+  await markSync(env,syncKey)
   return{configured:true,synced:true,events:events.length}
 }
