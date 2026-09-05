@@ -96,8 +96,10 @@ function sessionRow(a:any){
     return `<article class="patient-consult-row ${recurring?'patient-consult-row-recurring':''}"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>${recurring?'Reserva recorrente':'Reserva'} · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
   }
   const awaiting=a.workflow_state==='awaiting_reschedule'
-  const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-Date.now()>=24*3600000
-  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
+  const isStandard=String(a.reservation_kind||'standard')==='standard'
+  const canReschedule=!awaiting&&!isStandard&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-Date.now()>=24*3600000
+  const note=awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':isStandard&&a.status==='confirmed'?'<small>Reserva feita pelo portal: não há reagendamento pelo paciente.</small>':''
+  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${note}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
 }
 
 function historyRow(a:any){
