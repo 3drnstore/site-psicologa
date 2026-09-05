@@ -131,10 +131,16 @@ class AdminCalendar {
   }
 
   openContact(s:Slot,anchor:HTMLElement){
+    this.host.querySelectorAll<HTMLElement>('.agenda-slot-card.contact-open,.agenda-day-column.contact-open').forEach(el=>el.classList.remove('contact-open'))
     this.host.querySelector('.gc-contact-popover')?.remove()
+    const card=anchor.closest<HTMLElement>('.agenda-slot-card')
+    const day=anchor.closest<HTMLElement>('.agenda-day-column')
+    card?.classList.add('contact-open')
+    day?.classList.add('contact-open')
     anchor.insertAdjacentHTML('afterend',this.contactCard(s))
     const pop=anchor.nextElementSibling as HTMLElement|null
-    pop?.querySelector('[data-close-contact]')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();pop.remove()})
+    const close=()=>{pop?.remove();card?.classList.remove('contact-open');day?.classList.remove('contact-open')}
+    pop?.querySelector('[data-close-contact]')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();close()})
     pop?.addEventListener('click',e=>e.stopPropagation())
   }
 
