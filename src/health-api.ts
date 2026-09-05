@@ -1,7 +1,7 @@
 import { adminAuthSchemaStatus } from './admin-auth-schema'
 import type { Env } from './types'
 
-export const APP_RELEASE = '2026.09.05-automation-calendar-days-v1'
+export const APP_RELEASE = '2026.09.05-reservation-policy-admin-cancel-v1'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -82,8 +82,8 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
         SELECT
           (SELECT COUNT(*) FROM patient_recurrence WHERE active=1) AS active_rules,
           (SELECT COUNT(*) FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment') AS recurring_pending,
-          (SELECT COUNT(*) FROM appointments WHERE reservation_kind='recurring' AND status='expired' AND updated_at>=datetime('now','-1 day')) AS recurring_expired_24h,
-          (SELECT MIN(payment_deadline_at) FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment' AND datetime(payment_deadline_at)>datetime('now')) AS next_payment_deadline
+          (SELECT COUNT(*) FROM appointments WHERE status='cancelled' AND workflow_state='payment_deadline_missed' AND updated_at>=datetime('now','-1 day')) AS payment_deadline_cancelled_24h,
+          (SELECT MIN(payment_deadline_at) FROM appointments WHERE status='pending_payment' AND datetime(payment_deadline_at)>datetime('now')) AS next_payment_deadline
       `).first<any>()
       const notifications = await env.DB.prepare(`
         SELECT
@@ -98,18 +98,22 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
       automation = {
         cron_expected_every_minutes: 15,
         schedule_basis: 'calendar_days',
+        reservation_payment_deadline_days_before: 2,
+        patient_reschedule_block_days_before: 1,
         payment_reminder_days_before: 3,
         payment_final_days_before: 2,
         appointment_reminder_days_before: 1,
+        patient_cancellation_enabled: false,
+        admin_cancellation_enabled: true,
         active_recurrence_rules: Number(recurrence?.active_rules || 0),
         recurring_pending_payment: Number(recurrence?.recurring_pending || 0),
-        recurring_expired_last_24h: Number(recurrence?.recurring_expired_24h || 0),
-        next_recurring_payment_deadline_at: recurrence?.next_payment_deadline || null,
+        payment_deadline_cancelled_last_24h: Number(recurrence?.payment_deadline_cancelled_24h || 0),
+        next_payment_deadline_at: recurrence?.next_payment_deadline || null,
         recurring_created_emails_last_24h: Number(notifications?.recurring_created || 0),
         payment_reminder_emails_last_24h: Number(notifications?.payment_reminders || 0),
         payment_final_emails_last_24h: Number(notifications?.payment_final || 0),
         appointment_reminder_emails_last_24h: Number(notifications?.appointment_reminders || 0),
-        reservation_expired_emails_last_24h: Number(notifications?.reservation_expired || 0),
+        reservation_cancelled_emails_last_24h: Number(notifications?.reservation_expired || 0),
       }
     }
 
