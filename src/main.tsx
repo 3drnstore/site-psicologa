@@ -40,6 +40,7 @@ import { installPrivacyLinksSafe } from './privacy-links-safe'
 import { installTerminologyEnhancer } from './terminology-enhancer'
 import { installSessionManagementUi } from './session-management-ui'
 import { installPatientFlowHotfix } from './patient-flow-hotfix'
+import { installAdminReceitaSaudeEnhancer } from './admin-receita-saude-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -118,4 +119,5 @@ safeInstall('links de privacidade',installPrivacyLinksSafe)
 safeInstall('sincronização de rota do paciente',installPatientRouteSync)
 safeInstall('terminologia',installTerminologyEnhancer)
 safeInstall('gestão de sessões',installSessionManagementUi)
+safeInstall('controle Receita Saúde',installAdminReceitaSaudeEnhancer)
 safeInstall('correções do fluxo do paciente',installPatientFlowHotfix)
