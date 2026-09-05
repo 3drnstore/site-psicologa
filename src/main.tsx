@@ -130,8 +130,9 @@ if(isAdminPath){
 }else{
   if(isPatientPath)installPatientModules()
   else{
-    // O login pode trocar o App público pelo portal sem recarregar a página.
-    // Instala os módulos do paciente somente quando o portal realmente aparece.
+    // O login troca o App público pelo portal sem recarregar a página.
+    // O detector permanece ativo até o portal surgir, independentemente de quanto tempo
+    // o paciente fique na página de login antes de entrar.
     const root=document.getElementById('root')
     const detectPatient=()=>{
       if(document.querySelector('.patient-page')){installPatientModules();return true}
@@ -140,7 +141,6 @@ if(isAdminPath){
     if(!detectPatient()&&root){
       const observer=new MutationObserver(()=>{if(detectPatient())observer.disconnect()})
       observer.observe(root,{childList:true,subtree:true})
-      window.setTimeout(()=>observer.disconnect(),30000)
     }
   }
   if(!isPatientPath){
