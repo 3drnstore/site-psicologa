@@ -8,8 +8,10 @@ type ContactMessage={id:number;name:string;email:string;phone:string;message:str
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]||c))
 const dateTime=(value:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))
 
-async function getMessages(){const r=await fetch('/api/admin/messages',{credentials:'include',cache:'no-store'});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível carregar as mensagens.');return (d.messages||[]) as ContactMessage[]}
-async function setMessageStatus(id:number,status:'new'|'read'){const r=await fetch(`/api/admin/messages/${id}`,{method:'PATCH',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({status})});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível atualizar a mensagem.')}
+// A API de mensagens administrativas compartilha o endpoint de contato.
+// O parâmetro admin=1 mantém a rota pública /api/contact isolada da leitura do painel.
+async function getMessages(){const r=await fetch('/api/contact?admin=1',{credentials:'include'});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível carregar as mensagens.');return (d.messages||[]) as ContactMessage[]}
+async function setMessageStatus(id:number,status:'new'|'read'){const r=await fetch('/api/contact?admin=1',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({admin_action:'status',id,status})});const d=await r.json().catch(()=>({})) as any;if(!r.ok)throw new Error(d.message||'Não foi possível atualizar a mensagem.')}
 
 function topTitle(){return (document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim()}
 function cleanupCustomViews(){
