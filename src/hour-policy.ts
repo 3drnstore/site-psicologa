@@ -1,14 +1,16 @@
 import { readCookie, sha256 } from './auth'
-import { sendPatientEventEmail } from './email-notifications'
+import { sendPatientEventEmail, sendReservationCreatedEmail } from './email-notifications'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
 const minusHours=(v:string,h:number)=>new Date(new Date(v).getTime()-h*3600000).toISOString()
+const plusDays=(v:string,d:number)=>new Date(new Date(v).getTime()+d*86400000).toISOString()
 const ptDate=(v:string)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',weekday:'long',day:'2-digit',month:'2-digit'}).format(new Date(v))
 const ptTime=(v:string)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(v))
 
 async function patient(request:Request,env:Env){const token=readCookie(request,'ps_session');if(!token)return null;return env.DB.prepare(`SELECT p.* FROM sessions s JOIN patients p ON p.id=s.patient_id WHERE s.token_hash=? AND s.expires_at>? AND COALESCE(p.portal_active,1)=1`).bind(await sha256(token),nowIso()).first<any>()}
+async function admin(request:Request,env:Env){const token=readCookie(request,'ps_admin_session');if(!token)return null;return env.DB.prepare(`SELECT a.* FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),nowIso()).first<any>()}
 
 async function googleToken(env:Env){if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return null;const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'})});if(!r.ok)return null;return((await r.json())as any).access_token||null}
 
@@ -25,7 +27,24 @@ export async function normalizeHourlyDeadlines(env:Env){
   for(const row of rows.results||[]){const deadline=minusHours(String(row.starts_at),48);await env.DB.prepare(`UPDATE appointments SET reserved_until=?,payment_deadline_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(deadline,deadline,row.id).run()}
 }
 
+async function handleRecurrencePut(request:Request,env:Env,path:string){
+  const match=path.match(/^\/api\/admin\/patients\/(\d+)\/recurrence$/);if(!match||request.method!=='PUT')return null
+  const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
+  const patientId=Number(match[1]),data=await request.json().catch(()=>({})) as any,cadence=Number(data.cadence_days)===14?14:7,sourceId=Number(data.source_appointment_id)
+  const source=await env.DB.prepare(`SELECT a.*,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=? AND a.status='confirmed'`).bind(sourceId,patientId).first<any>();if(!source)return json({ok:false,message:'Escolha uma sessão confirmada deste paciente como referência.'},409)
+  const local=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(source.starts_at)),weekdayMap:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6},wd=weekdayMap[local.find(x=>x.type==='weekday')?.value||'Mon'],hh=local.find(x=>x.type==='hour')?.value||'00',mm=local.find(x=>x.type==='minute')?.value||'00',ruleId=crypto.randomUUID()
+  await env.DB.prepare(`INSERT INTO patient_recurrence(id,patient_id,cadence_days,weekday,start_time,active,source_appointment_id) VALUES(?,?,?,?,?,1,?) ON CONFLICT(patient_id) DO UPDATE SET cadence_days=excluded.cadence_days,weekday=excluded.weekday,start_time=excluded.start_time,active=1,source_appointment_id=excluded.source_appointment_id,updated_at=CURRENT_TIMESTAMP`).bind(ruleId,patientId,cadence,wd,`${hh}:${mm}`,sourceId).run()
+  const existing=await env.DB.prepare(`SELECT id FROM appointments WHERE recurrence_parent_appointment_id=? LIMIT 1`).bind(sourceId).first<any>();if(existing)return json({ok:true,cadence_days:cadence})
+  const startsAt=plusDays(String(source.starts_at),cadence),endsAt=plusDays(String(source.ends_at),cadence);let slot=await env.DB.prepare(`SELECT * FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1`).bind(startsAt,endsAt).first<any>()
+  if(slot&&slot.status!=='free')return json({ok:true,cadence_days:cadence,warning:'O próximo horário recorrente já está ocupado.'})
+  if(!slot){const ins=await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'held','visible','recurring_patient')`).bind(startsAt,endsAt).run();slot={id:Number(ins.meta.last_row_id)}}else{const claim=await env.DB.prepare(`UPDATE availability SET status='held',source='recurring_patient',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(slot.id).run();if(!Number(claim.meta.changes||0))return json({ok:true,cadence_days:cadence,warning:'O próximo horário recorrente acabou de ser ocupado.'})}
+  const deadline=minusHours(startsAt,48),inserted=await env.DB.prepare(`INSERT INTO appointments(patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state,recurrence_rule_id,recurrence_parent_appointment_id) VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(patientId,slot.id,source.amount_cents,deadline,deadline,'recurring','recurring_reserved',ruleId,sourceId).run(),appointmentId=Number(inserted.meta.last_row_id)
+  await sendReservationCreatedEmail(env,appointmentId)
+  return json({ok:true,cadence_days:cadence})
+}
+
 export async function handleHourlyPolicy(request:Request,env:Env,path:string):Promise<Response|null>{
+  const recurrence=await handleRecurrencePut(request,env,path);if(recurrence)return recurrence
   const match=path.match(/^\/api\/appointments\/(\d+)\/reschedule$/)
   if(!match||request.method!=='POST')return null
   const p=await patient(request,env);if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
