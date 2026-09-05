@@ -49,10 +49,13 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
     }
   }
 
-  for(const id of deleteIds)await removePortalAvailabilityFromGoogle(env,id).catch(error=>console.error('Google availability delete sync:',error instanceof Error?error.message:String(error)))
+  let googleAttempts=0,googleFailures=0
+  for(const id of deleteIds){googleAttempts++;try{if(!(await removePortalAvailabilityFromGoogle(env,id)))googleFailures++}catch{googleFailures++}}
   if(statements.length)await env.DB.batch(statements)
-  if(mode!=='delete')for(const cell of changedCells){const row=await env.DB.prepare(`SELECT id FROM availability WHERE starts_at=? AND ends_at=? ORDER BY id DESC LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>();if(row?.id)await syncPortalAvailabilityToGoogle(env,Number(row.id)).catch(error=>console.error('Google availability sync:',error instanceof Error?error.message:String(error)))}
+  if(mode!=='delete')for(const cell of changedCells){const row=await env.DB.prepare(`SELECT id FROM availability WHERE starts_at=? AND ends_at=? ORDER BY id DESC LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>();if(row?.id){googleAttempts++;try{if(!(await syncPortalAvailabilityToGoogle(env,Number(row.id))))googleFailures++}catch{googleFailures++}}}
 
   const changed=changedCells.length
-  return json({ok:true,changed,skipped,changed_cells:changedCells,message:skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou sessão confirmada.`:`${changed} horário(s) alterado(s).`})
+  const base=skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou sessão confirmada.`:`${changed} horário(s) alterado(s).`
+  const message=googleFailures?`${base} A alteração foi salva no site, mas ${googleFailures} sincronização(ões) com a Google Agenda falharam.`:base
+  return json({ok:true,changed,skipped,changed_cells:changedCells,google_sync:{attempted:googleAttempts,failed:googleFailures,ok:googleFailures===0},message})
 }
