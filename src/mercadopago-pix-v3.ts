@@ -3,7 +3,6 @@ import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
-const plusMinutes=(minutes:number)=>new Date(Date.now()+minutes*60_000).toISOString()
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
@@ -37,7 +36,8 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
 
     const ap=await env.DB.prepare(`SELECT * FROM appointments WHERE id=? AND patient_id=?`).bind(appointmentId,p.id).first<any>()
     if(!ap||ap.status!=='pending_payment')return json({ok:false,message:'Reserva não disponível para pagamento.'},409)
-    if(ap.reserved_until&&new Date(ap.reserved_until).getTime()<=Date.now())return json({ok:false,message:'O tempo desta reserva expirou. Escolha o horário novamente.'},409)
+    const deadline=ap.payment_deadline_at||ap.reserved_until
+    if(!deadline||new Date(deadline).getTime()<=Date.now())return json({ok:false,message:'O prazo de pagamento desta reserva terminou e o horário será liberado.'},409)
 
     const configured=Math.max(0,Number(await setting(env,'pix_price_cents',await setting(env,'consultation_price_cents','0')))||0)
     if(configured<=0)return json({ok:false,message:'O valor Pix ainda não foi configurado pela profissional.'},409)
@@ -45,7 +45,7 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
     const existing=await env.DB.prepare(`SELECT * FROM payments WHERE appointment_id=? AND provider='mercadopago' AND status='pending' AND external_id IS NOT NULL ORDER BY id DESC LIMIT 1`).bind(appointmentId).first<any>()
     if(existing&&(existing.pix_qr_code||existing.pix_copy_paste||existing.checkout_url)){
       await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(ap.availability_id).run()
-      return json({ok:true,payment_id:Number(existing.id),provider:'mercadopago',pix_qr_code:existing.pix_qr_code,pix_copy_paste:existing.pix_copy_paste,checkout_url:existing.checkout_url,amount_cents:Number(existing.amount_cents),test_mode:String(env.MERCADOPAGO_TEST_MODE||'').toLowerCase()==='true'})
+      return json({ok:true,payment_id:Number(existing.id),provider:'mercadopago',pix_qr_code:existing.pix_qr_code,pix_copy_paste:existing.pix_copy_paste,checkout_url:existing.checkout_url,amount_cents:Number(existing.amount_cents),payment_deadline_at:deadline,test_mode:String(env.MERCADOPAGO_TEST_MODE||'').toLowerCase()==='true'})
     }
 
     if(!env.MERCADOPAGO_ACCESS_TOKEN)return json({ok:false,message:'Access Token do Mercado Pago não está configurado no servidor.'},503)
@@ -53,10 +53,12 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
     const testMode=String(env.MERCADOPAGO_TEST_MODE||'').toLowerCase()==='true'
     const chargedAmount=testMode?5000:configured
     const amount=(chargedAmount/100).toFixed(2)
-    const holdMinutes=Math.max(30,Number(await setting(env,'hold_minutes','30'))||30)
+    const remainingMinutes=Math.floor((new Date(deadline).getTime()-Date.now())/60000)
+    if(remainingMinutes<1)return json({ok:false,message:'O prazo de pagamento desta reserva terminou.'},409)
+    const expirationMinutes=Math.max(30,Math.min(43200,remainingMinutes))
 
     await env.DB.batch([
-      env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method='pix',payment_provider='mercadopago',reserved_until=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(chargedAmount,plusMinutes(holdMinutes),appointmentId),
+      env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method='pix',payment_provider='mercadopago',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(chargedAmount,appointmentId),
       env.DB.prepare(`UPDATE availability SET status='held',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(ap.availability_id),
     ])
 
@@ -68,7 +70,7 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
       total_amount:amount,
       external_reference:`consulta-${appointmentId}-pagamento-${paymentId}`,
       processing_mode:'automatic',
-      transactions:{payments:[{amount,payment_method:{id:'pix',type:'bank_transfer'},expiration_time:`PT${Math.max(30,Math.min(43200,holdMinutes))}M`}]},
+      transactions:{payments:[{amount,payment_method:{id:'pix',type:'bank_transfer'},expiration_time:`PT${expirationMinutes}M`}]},
       payer:testMode
         ?{email:'test_user_br@testuser.com',first_name:'APRO'}
         :{email:p.email,first_name:String(p.full_name||'Paciente').split(' ')[0]}
@@ -105,7 +107,7 @@ export async function handleMercadoPagoPixV3(request:Request,env:Env,path:string
     await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,pix_qr_code=?,pix_copy_paste=?,raw_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(orderId,ticketUrl,qrDataUrl,copyPaste,rawStatus,paymentId).run()
     await env.DB.prepare(`UPDATE appointments SET payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(orderId,appointmentId).run()
 
-    return json({ok:true,payment_id:paymentId,provider:'mercadopago',pix_qr_code:qrDataUrl,pix_copy_paste:copyPaste,checkout_url:ticketUrl,amount_cents:chargedAmount,test_mode:testMode})
+    return json({ok:true,payment_id:paymentId,provider:'mercadopago',pix_qr_code:qrDataUrl,pix_copy_paste:copyPaste,checkout_url:ticketUrl,amount_cents:chargedAmount,payment_deadline_at:deadline,test_mode:testMode})
   }catch(error){
     const detail=error instanceof Error?error.message:String(error)
     console.error('Mercado Pago Pix V3 error:',detail)
