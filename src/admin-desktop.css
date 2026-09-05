@@ -27,6 +27,8 @@
 .admin-dashboard-actions button{border:1px solid #d7e2ef;background:#fff;color:#58708f;border-radius:10px;min-height:38px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer}
 .admin-dashboard-actions button:hover{background:#edf3fa;border-color:#c9d9ea}
 .admin-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.admin-dashboard-sessions-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.admin-dashboard-sessions-split .admin-kpi{min-width:0;padding-left:14px;padding-right:14px}
 .admin-kpi{background:#fff;border:1px solid #dfe7f0;border-radius:16px;padding:18px 19px;display:grid;gap:7px;box-shadow:0 8px 26px rgba(65,87,116,.04)}
 .admin-kpi small{color:#8090a4;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.045em}
 .admin-kpi strong{font-family:Georgia,serif;font-size:29px;font-weight:400;color:#425b7c}
@@ -102,6 +104,7 @@
 }
 @media(max-width:520px){
   .admin-kpi-grid,.admin-finance-summary{grid-template-columns:1fr}
+  .admin-dashboard-sessions-split{grid-template-columns:1fr 1fr}
   .admin-dashboard-actions{display:grid;grid-template-columns:1fr 1fr}
   .admin-dashboard-actions button{width:100%}
 }
