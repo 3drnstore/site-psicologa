@@ -23,13 +23,18 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
   if(path!=='/api/admin/google-calendar/diagnostic'||request.method!=='GET')return null
   const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
   const t=await token(env)
-  if(!t.ok)return json({ok:false,configured:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET&&env.GOOGLE_REFRESH_TOKEN),calendar_target:env.GOOGLE_CALENDAR_ID||'primary',token_error:t.error,token_detail:t.detail||null},200)
+  const calendarTarget=env.GOOGLE_CALENDAR_ID||'primary'
+  if(!t.ok)return json({ok:false,configured:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET&&env.GOOGLE_REFRESH_TOKEN),calendar_target:calendarTarget,token_error:t.error,token_detail:t.detail||null},200)
 
   const url=new URL(request.url)
   const from=url.searchParams.get('from')||new Date(Date.now()-7*86400000).toISOString()
   const to=url.searchParams.get('to')||new Date(Date.now()+30*86400000).toISOString()
-  const calendarTarget=env.GOOGLE_CALENDAR_ID||'primary'
-  const eventsUrl=new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarTarget)}/events`)
+  const encodedCalendar=encodeURIComponent(calendarTarget)
+
+  const metaResponse=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodedCalendar}`,{headers:{authorization:`Bearer ${t.accessToken}`,accept:'application/json'}})
+  const meta=await metaResponse.json().catch(()=>({})) as any
+
+  const eventsUrl=new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodedCalendar}/events`)
   eventsUrl.searchParams.set('timeMin',new Date(from).toISOString())
   eventsUrl.searchParams.set('timeMax',new Date(to).toISOString())
   eventsUrl.searchParams.set('singleEvents','true')
@@ -46,6 +51,7 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
     ok:true,
     mode:'READ_ONLY_DIAGNOSTIC_NO_GOOGLE_DELETES',
     calendar_target:calendarTarget,
+    calendar_metadata:{request_status:metaResponse.status,id:meta?.id||null,summary:meta?.summary||null,timeZone:meta?.timeZone||null,error:metaResponse.ok?null:String(meta?.error?.message||'')},
     token_ok:true,
     google_events_request_status:r.status,
     google_events_count:Array.isArray(body.items)?body.items.length:0,
@@ -53,6 +59,6 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
     appointments:(appointments.results||[]).map((x:any)=>({id:x.id,status:x.status,calendar_sync_state:x.calendar_sync_state,has_google_event_id:Boolean(x.google_calendar_event_id),starts_at:x.starts_at,ends_at:x.ends_at,patient:x.full_name})),
     local_busy_slots:(availability.results||[]),
     portal_google_mappings:(mappings.results||[]).map((x:any)=>({key:x.key,has_event_id:Boolean(x.value)})),
-    note:'Este diagnóstico não cria, altera nem apaga eventos no Google Calendar.'
+    note:'Este diagnóstico é somente leitura: não cria, altera nem apaga eventos no Google Calendar.'
   })
 }
