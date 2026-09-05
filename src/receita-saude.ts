@@ -3,13 +3,38 @@ import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}})
 const nowIso=()=>new Date().toISOString()
+let storageReady=false
 
 async function admin(request:Request,env:Env){
   const token=readCookie(request,'ps_admin_session');if(!token)return null
   return env.DB.prepare(`SELECT a.* FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_user_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),nowIso()).first<any>()
 }
 
+async function ensureStorage(env:Env){
+  if(storageReady)return
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS receita_saude_receipts(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    appointment_id INTEGER NOT NULL UNIQUE,
+    patient_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    receipt_number TEXT,
+    payment_date TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    issued_at TEXT,
+    cancelled_at TEXT,
+    notes TEXT,
+    marked_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(appointment_id) REFERENCES appointments(id),
+    FOREIGN KEY(patient_id) REFERENCES patients(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_receita_saude_status ON receita_saude_receipts(status,payment_date DESC);`)
+  storageReady=true
+}
+
 async function syncPending(env:Env){
+  await ensureStorage(env)
   const rows=await env.DB.prepare(`
     SELECT a.id AS appointment_id,a.patient_id,a.amount_cents,a.paid_at
     FROM appointments a
