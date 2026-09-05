@@ -1,7 +1,7 @@
 import { adminAuthSchemaStatus } from './admin-auth-schema'
 import type { Env } from './types'
 
-export const APP_RELEASE = '2026.09.05-reservation-policy-admin-cancel-v1'
+export const APP_RELEASE = '2026.09.05-hour-policy-admin-cancel-v1'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -89,7 +89,6 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
         SELECT
           SUM(CASE WHEN kind='recurring_created' AND status='sent' THEN 1 ELSE 0 END) AS recurring_created,
           SUM(CASE WHEN kind='payment_reminder' AND status='sent' THEN 1 ELSE 0 END) AS payment_reminders,
-          SUM(CASE WHEN kind='payment_final' AND status='sent' THEN 1 ELSE 0 END) AS payment_final,
           SUM(CASE WHEN kind='appointment_reminder' AND status='sent' THEN 1 ELSE 0 END) AS appointment_reminders,
           SUM(CASE WHEN kind='reservation_expired' AND status='sent' THEN 1 ELSE 0 END) AS reservation_expired
         FROM patient_notifications
@@ -97,12 +96,11 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
       `).first<any>()
       automation = {
         cron_expected_every_minutes: 15,
-        schedule_basis: 'calendar_days',
-        reservation_payment_deadline_days_before: 2,
-        patient_reschedule_block_days_before: 1,
-        payment_reminder_days_before: 3,
-        payment_final_days_before: 2,
-        appointment_reminder_days_before: 1,
+        schedule_basis: 'hours',
+        payment_reminder_hours_before: 72,
+        reservation_payment_deadline_hours_before: 48,
+        appointment_reminder_hours_before: 24,
+        patient_reschedule_block_hours_before: 24,
         patient_cancellation_enabled: false,
         admin_cancellation_enabled: true,
         active_recurrence_rules: Number(recurrence?.active_rules || 0),
@@ -111,7 +109,6 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
         next_payment_deadline_at: recurrence?.next_payment_deadline || null,
         recurring_created_emails_last_24h: Number(notifications?.recurring_created || 0),
         payment_reminder_emails_last_24h: Number(notifications?.payment_reminders || 0),
-        payment_final_emails_last_24h: Number(notifications?.payment_final || 0),
         appointment_reminder_emails_last_24h: Number(notifications?.appointment_reminders || 0),
         reservation_cancelled_emails_last_24h: Number(notifications?.reservation_expired || 0),
       }
