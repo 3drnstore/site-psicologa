@@ -12,6 +12,14 @@ A senha do cofre deve ter pelo menos 12 caracteres e precisa ser guardada com se
 
 `CLINICAL_MASTER_KEY` pertence à camada anterior de envelope encryption no Worker. Ela não é usada para abrir novos prontuários E2E. Pode ser mantida durante a transição e removida depois que a nova versão estiver validada e não houver dados legados dependentes dela.
 
+## E-mail transacional
+- `RESEND_API_KEY` — chave da API do Resend. Configure como Secret no Worker.
+- `EMAIL_FROM` — remetente autorizado no Resend, por exemplo `Atendimento <agenda@seudominio.com.br>`.
+
+Os e-mails automáticos cobrem reserva, confirmação de pagamento, próxima consulta recorrente, lembretes de pagamento, lembrete de consulta, expiração e remarcações. O histórico é registrado em `patient_notifications` com `channel='email'`.
+
+Enquanto `RESEND_API_KEY` e `EMAIL_FROM` não estiverem configurados, o sistema preserva a lógica e o histórico de tentativas, mas não envia mensagens externas.
+
 ## Pagamentos
 
 ### Mercado Pago (Pix)
