@@ -1,5 +1,6 @@
 import worker from './worker'
 import { handleGoogleAuth } from './google-auth'
+import { handleGoogleCalendarDiagnostic } from './google-calendar-diagnostic'
 import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
 import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
@@ -51,7 +52,7 @@ function withSecurityHeaders(response: Response, path: string) {
 
   const privateRoute = path === '/admin' || path.startsWith('/admin/') || path === '/paciente' || path.startsWith('/paciente/') || path === '/recuperar-senha' || path === '/status' || path === '/status/'
   const clinicalApi = path === '/api/admin/clinical-vault' || /^\/api\/admin\/(?:patients\/\d+(?:\/notes|\/overview)?|notes\/)/.test(path)
-  if (privateRoute || clinicalApi) { headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); headers.set('Cache-Control', 'private, no-store'); headers.set('Pragma', 'no-cache') }
+  if (privateRoute || clinicalApi || path === '/api/admin/google-calendar/diagnostic') { headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); headers.set('Cache-Control', 'private, no-store'); headers.set('Pragma', 'no-cache') }
   else if (path === '/api/health') headers.set('Cache-Control', 'no-store')
   else if (path.startsWith('/assets/')) headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   else if (path === '/favicon.svg' || path === '/site.webmanifest') headers.set('Cache-Control', 'public, max-age=86400')
@@ -85,6 +86,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     const authV2 = await handleAuthV2(request, env, path); if (authV2) return authV2
   }
 
+  const googleDiagnostic = await handleGoogleCalendarDiagnostic(request, env, path); if (googleDiagnostic) return googleDiagnostic
   const paymentTest = await handlePaymentFlowTest(request, env, path); if (paymentTest) return paymentTest
   const adminSecurity = await handleAdminSecurity(request, env, path); if (adminSecurity) return adminSecurity
   const platformPricing = await handlePlatformPricing(request, env, path); if (platformPricing) return platformPricing
