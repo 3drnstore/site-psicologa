@@ -5,17 +5,13 @@ import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
-const TZ='America/Sao_Paulo'
+const minusHoursIso=(v:string,hours:number)=>new Date(new Date(v).getTime()-hours*3600000).toISOString()
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
   if(!token)return null
   return env.DB.prepare(`SELECT p.id,p.pricing_origin FROM sessions s JOIN patients p ON p.id=s.patient_id WHERE s.token_hash=? AND s.expires_at>?`).bind(await sha256(token),nowIso()).first<any>()
 }
-function localDateParts(v:string|Date){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(v instanceof Date?v:new Date(v));return{year:Number(parts.find(p=>p.type==='year')?.value||0),month:Number(parts.find(p=>p.type==='month')?.value||0),day:Number(parts.find(p=>p.type==='day')?.value||0)}}
-function localDayNumber(v:string|Date){const p=localDateParts(v);return Math.floor(Date.UTC(p.year,p.month-1,p.day)/86400000)}
-function daysUntil(v:string){return localDayNumber(v)-localDayNumber(new Date())}
-function paymentDeadlineTwoDaysBefore(v:string){const p=localDateParts(v),base=new Date(Date.UTC(p.year,p.month-1,p.day));base.setUTCDate(base.getUTCDate()-2);const y=base.getUTCFullYear(),m=String(base.getUTCMonth()+1).padStart(2,'0'),d=String(base.getUTCDate()).padStart(2,'0');return new Date(`${y}-${m}-${d}T23:59:59-03:00`).toISOString()}
 
 export async function handlePatientReserveV2(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path!=='/api/appointments/reserve'||request.method!=='POST')return null
@@ -32,11 +28,10 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     if(!slot||slot.status!=='free')return json({ok:false,message:'Esse horário não está mais disponível.'},409)
     const startsAt=new Date(String(slot.starts_at));if(Number.isNaN(startsAt.getTime()))return json({ok:false,message:'Este horário possui uma data inválida. Atualize a agenda e tente novamente.'},409)
     if(startsAt.getTime()<=Date.now())return json({ok:false,message:'Esse horário já passou e não pode mais ser reservado.'},409)
-    if(daysUntil(String(slot.starts_at))<2)return json({ok:false,message:'As reservas pelo portal precisam permitir o pagamento até 2 dias antes da consulta.'},409)
+    const paymentDeadline=minusHoursIso(String(slot.starts_at),48)
+    if(new Date(paymentDeadline).getTime()<=Date.now())return json({ok:false,message:'As reservas pelo portal precisam ser feitas com mais de 48 horas de antecedência para permitir o pagamento no prazo.'},409)
     const pricing=await pricingForOrigin(env,p.pricing_origin,'card'),amount=Math.max(0,Number(pricing.consultation_price_cents)||0)
     if(amount<=0)return json({ok:false,message:'O valor da sessão ainda não foi configurado pela profissional.'},409)
-    const paymentDeadline=paymentDeadlineTwoDaysBefore(String(slot.starts_at))
-    if(new Date(paymentDeadline).getTime()<=Date.now())return json({ok:false,message:'O prazo de pagamento desta data já terminou. Escolha outro horário.'},409)
     const hold=await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
     if(!Number(hold.meta.changes||0))return json({ok:false,message:'Esse horário acabou de ser reservado por outra pessoa.'},409)
     try{
