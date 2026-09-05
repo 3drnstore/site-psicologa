@@ -99,15 +99,21 @@ function quickActions(){
 
 function dashboardMarkup(appointments:Appointment[],patients:Patient[]){
   const now=new Date()
+  const tomorrow=new Date(now)
+  tomorrow.setDate(tomorrow.getDate()+1)
   const active=appointments.filter(a=>!['cancelled','expired'].includes(String(a.status)))
   const today=active.filter(a=>sameLocalDay(new Date(a.starts_at),now))
+  const tomorrowSessions=active.filter(a=>sameLocalDay(new Date(a.starts_at),tomorrow))
   const pending=appointments.filter(a=>a.status==='pending_payment')
   const receivedMonth=appointments.filter(a=>a.status==='confirmed'&&a.paid_at&&sameMonth(new Date(a.paid_at),now)).reduce((sum,a)=>sum+Number(a.amount_cents||0),0)
   const upcoming=appointments.filter(a=>a.status==='confirmed'&&new Date(a.starts_at).getTime()>=Date.now()).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime()).slice(0,6)
 
   return `${quickActions()}
     <section class="admin-kpi-grid" aria-label="Resumo do painel">
-      <article class="admin-kpi"><small>Consultas hoje</small><strong>${today.length}</strong><span>Atendimentos previstos para hoje</span></article>
+      <div class="admin-dashboard-sessions-split">
+        <article class="admin-kpi"><small>Sessões hoje</small><strong>${today.length}</strong><span>Atendimentos previstos para hoje</span></article>
+        <article class="admin-kpi"><small>Sessões amanhã</small><strong>${tomorrowSessions.length}</strong><span>Atendimentos previstos para amanhã</span></article>
+      </div>
       <article class="admin-kpi attention"><small>Aguardando pagamento</small><strong>${pending.length}</strong><span>Reservas ainda não confirmadas</span></article>
       <article class="admin-kpi"><small>Pacientes</small><strong>${patients.length}</strong><span>Cadastros no banco de pacientes</span></article>
       <article class="admin-kpi success"><small>Recebido no mês</small><strong>${esc(money(receivedMonth))}</strong><span>Consultas pagas no mês atual</span></article>
