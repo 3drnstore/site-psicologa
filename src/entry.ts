@@ -29,6 +29,7 @@ import { handleAdminPatientOverview } from './admin-patient-overview'
 import { runEmailNotificationTasks } from './email-notifications'
 import { handleHourlyPolicy, normalizeHourlyDeadlines } from './hour-policy'
 import { handleReceitaSaude } from './receita-saude'
+import { handleFinanceStatement } from './finance-statement'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -92,6 +93,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (sessionManagement) return sessionManagement
   const receitaSaude = await handleReceitaSaude(request, env, path)
   if (receitaSaude) return receitaSaude
+  const financeStatement = await handleFinanceStatement(request, env, path)
+  if (financeStatement) return financeStatement
 
   const overviewResponse = await handleAdminPatientOverview(request, env, path); if (overviewResponse) return overviewResponse
   const clinicalResponse = await handleClinicalApi(request, env, path); if (clinicalResponse) return clinicalResponse
