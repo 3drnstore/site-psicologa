@@ -96,9 +96,8 @@ function sessionRow(a:any){
     return `<article class="patient-consult-row ${recurring?'patient-consult-row-recurring':''}"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>${recurring?'Reserva recorrente':'Reserva'} · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
   }
   const awaiting=a.workflow_state==='awaiting_reschedule'
-  const isStandard=String(a.reservation_kind||'standard')==='standard'
-  const canReschedule=!awaiting&&!isStandard&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-Date.now()>=24*3600000
-  const note=awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':isStandard&&a.status==='confirmed'?'<small>Reserva feita pelo portal: não há reagendamento pelo paciente.</small>':''
+  const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-Date.now()>=24*3600000
+  const note=awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':a.status==='confirmed'?'<small>Reagendamento disponível pelo portal até 24 horas antes da sessão.</small>':''
   return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${note}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
 }
 
@@ -125,7 +124,7 @@ async function renderReliablePatientSessions(){
     if(first.dataset.patientFlowKey!==key||first.dataset.finalPatientSessions!=='1'){
       first.dataset.patientFlowKey=key
       first.dataset.finalPatientSessions='1'
-      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Reservas aguardam pagamento até o prazo informado</small></div>${future.length?future.map(a=>sessionRow(a)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
+      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Pagamento, confirmação e reagendamento seguem o limite de 24 horas antes da sessão</small></div>${future.length?future.map(a=>sessionRow(a)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
     }
     if(historyPanel){
       const historyKey=JSON.stringify(history.map(a=>[a.id,a.status,a.workflow_state,a.starts_at,a.cancellation_reason]))
