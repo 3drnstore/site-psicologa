@@ -4,6 +4,7 @@ import { handleScheduleV2 } from './schedule-v2'
 import { handlePaymentsV2 } from './payments-v2'
 import { handleMercadoPagoPixV3 } from './mercadopago-pix-v3'
 import { handlePlatformCheckout } from './platform-checkout'
+import { handleInfinitePayCardCheckout } from './infinitepay-card-checkout'
 import { handlePlatformPricing } from './platform-pricing'
 import { handleAdminSetup } from './admin-setup'
 import { handleAuthV2 } from './auth-v2'
@@ -58,6 +59,7 @@ function withSecurityHeaders(response: Response, path: string) {
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url), path = url.pathname
+  if (env.INFINITEPAY_HANDLE) env.INFINITEPAY_HANDLE = String(env.INFINITEPAY_HANDLE).trim().replace(/^\$/, '')
   const blocked = protectApiRequest(request, path); if (blocked) return blocked
   const limited = checkRateLimit(request, path); if (limited) return limited
 
@@ -106,6 +108,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   if (path.startsWith('/api/payments/')) {
     try {
       if (path === '/api/payments/checkout' && request.method === 'POST') {
+        const cardResponse = await handleInfinitePayCardCheckout(request.clone(), env, path); if (cardResponse) return cardResponse
         const recurringResponse = await handleRecurringCheckout(request.clone(), env, path); if (recurringResponse) return recurringResponse
         const platformResponse = await handlePlatformCheckout(request.clone(), env, path); if (platformResponse) return platformResponse
         const probe = await request.clone().json().catch(() => ({})) as any
