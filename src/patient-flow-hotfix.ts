@@ -4,8 +4,6 @@ const dateLong=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'
 const dt=(v:string)=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:TZ}).format(new Date(v))
 const timeOnly=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:TZ}).format(new Date(v))
 const money=(c:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(c)||0)/100)
-function localDay(v:string|Date){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(v instanceof Date?v:new Date(v));const y=Number(parts.find(p=>p.type==='year')?.value||0),m=Number(parts.find(p=>p.type==='month')?.value||0),d=Number(parts.find(p=>p.type==='day')?.value||0);return Math.floor(Date.UTC(y,m-1,d)/86400000)}
-const daysUntil=(v:string)=>localDay(v)-localDay(new Date())
 
 async function api(path:string,init?:RequestInit){
   const r=await fetch(path,{credentials:'include',cache:'no-store',headers:{'content-type':'application/json',...(init?.headers||{})},...init})
@@ -98,7 +96,7 @@ function sessionRow(a:any){
     return `<article class="patient-consult-row ${recurring?'patient-consult-row-recurring':''}"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span><small>${recurring?'Reserva recorrente':'Reserva'} · pagamento até ${esc(dt(a.payment_deadline_at||a.reserved_until))} · ${esc(money(a.amount_cents))}</small></div><div class="patient-consult-actions"><span class="patient-consult-status pending">Aguardando pagamento</span><button type="button" data-rec-pay="pix" data-id="${a.id}">Pagar Pix</button><button type="button" data-rec-pay="card" data-id="${a.id}">Pagar cartão</button></div></article>`
   }
   const awaiting=a.workflow_state==='awaiting_reschedule'
-  const canReschedule=!awaiting&&a.status==='confirmed'&&daysUntil(a.starts_at)>1
+  const canReschedule=!awaiting&&a.status==='confirmed'&&new Date(a.starts_at).getTime()-Date.now()>=24*3600000
   return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${awaiting?'<small>Seu pagamento continua válido. A profissional entrará em contato para definir um novo horário.</small>':''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${awaiting?'awaiting':'confirmed'}">${awaiting?'Aguardando reagendamento':'Confirmada'}</span>${canReschedule?`<button type="button" data-patient-reschedule="${a.id}">Reagendar</button>`:''}</div></article>`
 }
 
