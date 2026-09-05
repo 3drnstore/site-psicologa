@@ -6,6 +6,19 @@
 .patient-booking-choice small{font-size:11px;color:#7b8076}
 .patient-booking-choice strong{font-size:13px;color:#354a43}
 
+/* Mantém segunda a sábado na mesma linha em desktop/tablet.
+   Esta folha é carregada depois de patient-portal.css, então também neutraliza
+   a regra antiga que quebrava a grade em 3/5 colunas em larguras intermediárias. */
+@media(min-width:761px){
+  .patient-week-grid{
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;
+    gap:10px!important;
+    width:min(1120px,100%)!important;
+  }
+  .patient-week-day{min-width:0!important;width:auto!important}
+  .patient-slot{min-width:0!important;padding-left:8px!important;padding-right:8px!important}
+}
+
 /* Mesma família tipográfica da marca PsicoGestão usada no acesso administrativo */
 .patient-sidebar-brand>strong::after{
   font-family:Georgia,"Times New Roman",serif!important;
