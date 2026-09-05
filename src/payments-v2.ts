@@ -1,5 +1,6 @@
 import { readCookie, sha256 } from './auth'
 import { sendAppointmentConfirmationEmail } from './appointment-confirmation-email'
+import { syncPortalAppointmentToGoogle } from './google-calendar-sync'
 import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -30,53 +31,6 @@ async function methodPrice(env: Env, method: 'pix' | 'credit_card', fallback: nu
   return Math.max(0, Math.round(legacy || fallback || 0))
 }
 
-async function googleAccessToken(env: Env) {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) return null
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      refresh_token: env.GOOGLE_REFRESH_TOKEN,
-      grant_type: 'refresh_token',
-    }),
-  })
-  if (!response.ok) return null
-  return ((await response.json()) as any).access_token || null
-}
-
-async function createCalendarEvent(env: Env, appointmentId: number) {
-  const appointment = await env.DB.prepare(`SELECT a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`)
-    .bind(appointmentId)
-    .first<any>()
-  if (!appointment || appointment.google_calendar_event_id) return appointment?.google_calendar_event_id || null
-
-  const token = await googleAccessToken(env)
-  if (!token) return null
-
-  const calendar = encodeURIComponent(env.GOOGLE_CALENDAR_ID || 'primary')
-  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      summary: `Consulta – ${appointment.full_name}`,
-      description: `Consulta confirmada pelo site. Contato: ${appointment.phone || appointment.email}.`,
-      start: { dateTime: appointment.starts_at, timeZone: 'America/Sao_Paulo' },
-      end: { dateTime: appointment.ends_at, timeZone: 'America/Sao_Paulo' },
-    }),
-  })
-  if (!response.ok) return null
-
-  const event = await response.json() as any
-  if (event.id) {
-    await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(event.id, appointmentId)
-      .run()
-  }
-  return event.id || null
-}
-
 async function confirm(env: Env, payment: any, rawStatus: string, actualMethod?: string) {
   if (payment.status === 'approved') return
   const appointment = await env.DB.prepare('SELECT * FROM appointments WHERE id=?').bind(payment.appointment_id).first<any>()
@@ -91,7 +45,11 @@ async function confirm(env: Env, payment: any, rawStatus: string, actualMethod?:
       .bind(appointment.availability_id),
   ])
 
-  await createCalendarEvent(env, Number(appointment.id))
+  // A reserva já pode ter criado o evento no Google como "Pendente de pagamento".
+  // Ao confirmar o pagamento, sincronizamos o MESMO evento para "Confirmada".
+  // syncPortalAppointmentToGoogle faz PATCH quando google_calendar_event_id já existe
+  // e só cria um novo evento se o vínculo anterior não existir mais.
+  await syncPortalAppointmentToGoogle(env, Number(appointment.id))
   await sendAppointmentConfirmationEmail(env, Number(appointment.id))
 }
 
@@ -324,126 +282,89 @@ export async function handlePaymentsV2(request: Request, env: Env, path: string,
       }
     }
 
-    await env.DB.prepare(`UPDATE appointments SET amount_cents=?,payment_method=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(amount, requested, appointmentId)
-      .run()
-    const inserted = await env.DB.prepare(`INSERT INTO payments (appointment_id,provider,method,status,amount_cents) VALUES (?,?,?,'pending',?)`)
-      .bind(appointmentId, provider, requested, amount)
-      .run()
-    const paymentId = Number(inserted.meta.last_row_id)
-    const origin = env.APP_ORIGIN || new URL(request.url).origin
+    await env.DB.prepare(`UPDATE appointments SET amount_cents=? WHERE id=?`).bind(amount, appointmentId).run()
+
+    let payment = await env.DB.prepare(`SELECT * FROM payments WHERE appointment_id=? AND provider=? AND status='pending' ORDER BY id DESC LIMIT 1`)
+      .bind(appointmentId, provider)
+      .first<any>()
+
+    if (!payment) {
+      const insert = await env.DB.prepare(`INSERT INTO payments(appointment_id,patient_id,provider,method,status,amount_cents,created_at,updated_at) VALUES(?,?,?,?, 'pending',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
+        .bind(appointmentId, p.id, provider, requested, amount)
+        .run()
+      payment = await env.DB.prepare('SELECT * FROM payments WHERE id=?').bind(Number(insert.meta.last_row_id)).first<any>()
+    }
 
     if (requested === 'pix') {
-      const holdMinutes = Math.max(30, Number(await setting(env, 'hold_minutes', '30')) || 30)
-      await env.DB.prepare(`UPDATE appointments SET reserved_until=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`)
-        .bind(plusMinutes(holdMinutes), appointmentId)
+      const deadline = appointment.payment_deadline_at || appointment.reserved_until
+      const remainingMinutes = deadline ? Math.max(1, Math.ceil((new Date(deadline).getTime() - Date.now()) / 60_000)) : 30
+      const created = await createMercadoPagoPix(env, p, appointmentId, Number(payment.id), amount, remainingMinutes)
+      await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,pix_qr_code=?,pix_copy_paste=?,raw_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+        .bind(created.orderId, created.ticketUrl, created.qrDataUrl, created.copyPaste, created.rawStatus, payment.id)
         .run()
-      try {
-        const mp = await createMercadoPagoPix(env, p, appointmentId, paymentId, amount, holdMinutes)
-        await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,pix_qr_code=?,pix_copy_paste=?,raw_status=? WHERE id=?`)
-          .bind(mp.orderId, mp.ticketUrl, mp.qrDataUrl, mp.copyPaste, mp.rawStatus, paymentId)
-          .run()
-        await env.DB.prepare(`UPDATE appointments SET payment_provider='mercadopago',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-          .bind(mp.orderId, appointmentId)
-          .run()
-        return json({
-          ok: true,
-          payment_id: paymentId,
-          provider: 'mercadopago',
-          pix_qr_code: mp.qrDataUrl,
-          pix_copy_paste: mp.copyPaste,
-          checkout_url: mp.ticketUrl,
-          amount_cents: amount,
-        })
-      } catch (error) {
-        await env.DB.prepare(`UPDATE payments SET status='failed',raw_status=? WHERE id=?`)
-          .bind(error instanceof Error ? error.message : String(error), paymentId)
-          .run()
-        return json({
-          ok: false,
-          payment_id: paymentId,
-          message: error instanceof Error ? error.message : 'Não foi possível gerar o Pix no Mercado Pago.',
-        }, 503)
-      }
+      return json({
+        ok: true,
+        payment_id: payment.id,
+        provider: 'mercadopago',
+        pix_qr_code: created.qrDataUrl,
+        pix_copy_paste: created.copyPaste,
+        checkout_url: created.ticketUrl,
+        amount_cents: amount,
+      })
     }
 
-    if (!env.INFINITEPAY_HANDLE) return json({ ok: false, payment_id: paymentId, message: 'InfinitePay ainda não configurada.' }, 503)
-    const response = await fetch('https://api.checkout.infinitepay.io/links', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        handle: env.INFINITEPAY_HANDLE,
-        items: [{ quantity: 1, price: amount, description: 'Consulta psicológica' }],
-        order_nsu: String(paymentId),
-        redirect_url: `${origin}/?payment=return&provider=infinitepay`,
-        webhook_url: `${origin}/api/payments/webhook/infinitepay`,
-        customer: { name: p.full_name, email: p.email, phone_number: p.phone },
-      }),
-    })
-    const responseData = await response.json().catch(() => ({})) as any
-    if (!response.ok) {
-      await env.DB.prepare(`UPDATE payments SET status='failed',raw_status=? WHERE id=?`)
-        .bind(JSON.stringify(responseData).slice(0, 1000), paymentId)
-        .run()
-      return json({ ok: false, message: 'Não foi possível abrir o checkout da InfinitePay.' }, 502)
-    }
-
-    const checkoutUrl = responseData.url || responseData.checkout_url || responseData.link || null
-    const external = String(responseData.slug || responseData.id || '')
-    if (!checkoutUrl) {
-      await env.DB.prepare(`UPDATE payments SET status='failed',raw_status='missing_checkout_url' WHERE id=?`).bind(paymentId).run()
-      return json({ ok: false, message: 'A InfinitePay não retornou o link de pagamento.' }, 502)
-    }
-
-    await env.DB.prepare(`UPDATE payments SET external_id=?,checkout_url=?,raw_status='created' WHERE id=?`)
-      .bind(external || null, checkoutUrl, paymentId)
-      .run()
-    await env.DB.prepare(`UPDATE appointments SET payment_provider='infinitepay',payment_external_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(external || null, appointmentId)
-      .run()
-    return json({ ok: true, payment_id: paymentId, provider: 'infinitepay', checkout_url: checkoutUrl, amount_cents: amount })
+    return json({ ok: true, payment_id: payment.id, provider: 'infinitepay', amount_cents: amount })
   }
 
-  const statusMatch = path.match(/^\/api\/payments\/status\/(\d+)$/)
-  if (statusMatch && request.method === 'GET') {
+  if (path.startsWith('/api/payments/status/') && request.method === 'GET') {
     const p = await patient(request, env)
-    if (!p) return json({ ok: false, message: 'Faça login para continuar.' }, 401)
-    const appointmentId = Number(statusMatch[1])
+    if (!p) return json({ ok: false, message: 'Não autenticado.' }, 401)
+    const appointmentId = Number(path.split('/').pop())
+    if (!appointmentId) return json({ ok: false, message: 'Agendamento inválido.' }, 400)
+
     const appointment = await env.DB.prepare(`SELECT * FROM appointments WHERE id=? AND patient_id=?`).bind(appointmentId, p.id).first<any>()
-    if (!appointment) return json({ ok: false, message: 'Consulta não encontrada.' }, 404)
+    if (!appointment) return json({ ok: false, message: 'Agendamento não encontrado.' }, 404)
+
     const payment = await env.DB.prepare(`SELECT * FROM payments WHERE appointment_id=? ORDER BY id DESC LIMIT 1`).bind(appointmentId).first<any>()
     if (payment?.provider === 'mercadopago' && payment.external_id && payment.status !== 'approved') {
       await verifyMercadoPago(env, String(payment.external_id), payment)
     }
-    const fresh = await env.DB.prepare(`SELECT status,paid_at,reserved_until FROM appointments WHERE id=?`).bind(appointmentId).first<any>()
-    return json({ ok: true, appointment: fresh })
+
+    const freshAppointment = await env.DB.prepare(`SELECT * FROM appointments WHERE id=?`).bind(appointmentId).first<any>()
+    const freshPayment = await env.DB.prepare(`SELECT * FROM payments WHERE appointment_id=? ORDER BY id DESC LIMIT 1`).bind(appointmentId).first<any>()
+    return json({ ok: true, appointment: freshAppointment, payment: freshPayment })
   }
 
-  if (path === '/api/payments/webhook/mercadopago' && request.method === 'POST') {
-    if (!(await validMercadoPagoWebhook(request, env))) {
-      return json({ ok: false, message: 'Assinatura do webhook inválida.' }, 401)
-    }
-
+  if (path === '/api/payments/mercadopago/webhook' && request.method === 'POST') {
+    const valid = await validMercadoPagoWebhook(request, env)
+    if (!valid) return json({ ok: false, message: 'Assinatura inválida.' }, 401)
     const payload = await request.json().catch(() => ({})) as any
-    const url = new URL(request.url)
-    const orderId = String(payload?.data?.id || payload?.id || url.searchParams.get('data.id') || url.searchParams.get('data_id') || '')
-    if (orderId) {
-      const payment = await env.DB.prepare(`SELECT * FROM payments WHERE provider='mercadopago' AND external_id=? ORDER BY id DESC LIMIT 1`)
-        .bind(orderId)
-        .first<any>()
-      if (payment) ctx.waitUntil(verifyMercadoPago(env, orderId, payment))
-    }
-    return json({ ok: true }, 200)
+    const orderId = String(payload?.data?.id || payload?.id || new URL(request.url).searchParams.get('data.id') || '')
+    if (!orderId) return json({ ok: true })
+    const payment = await env.DB.prepare(`SELECT * FROM payments WHERE external_id=? AND provider='mercadopago' ORDER BY id DESC LIMIT 1`).bind(orderId).first<any>()
+    if (payment) ctx.waitUntil(verifyMercadoPago(env, orderId, payment))
+    return json({ ok: true })
   }
 
-  if (path === '/api/payments/webhook/infinitepay' && request.method === 'POST') {
+  if (path === '/api/payments/infinitepay/callback' && request.method === 'POST') {
     const payload = await request.json().catch(() => ({})) as any
-    const id = Number(payload.order_nsu)
-    const payment = id
-      ? await env.DB.prepare(`SELECT * FROM payments WHERE id=? AND provider='infinitepay'`).bind(id).first<any>()
-      : null
+    const order = String(payload.order_nsu || '')
+    if (!order) return json({ ok: false }, 400)
+    const payment = await env.DB.prepare(`SELECT * FROM payments WHERE id=? AND provider='infinitepay'`).bind(Number(order)).first<any>()
     if (payment) ctx.waitUntil(verifyInfinitePay(env, payload, payment))
-    return new Response(null, { status: 200 })
+    return json({ ok: true })
+  }
+
+  if (path === '/api/payments/infinitepay/confirm' && request.method === 'POST') {
+    const p = await patient(request, env)
+    if (!p) return json({ ok: false, message: 'Não autenticado.' }, 401)
+    const payload = await request.json().catch(() => ({})) as any
+    const paymentId = Number(payload.payment_id || payload.order_nsu)
+    if (!paymentId) return json({ ok: false, message: 'Pagamento inválido.' }, 400)
+    const payment = await env.DB.prepare(`SELECT * FROM payments WHERE id=? AND patient_id=? AND provider='infinitepay'`).bind(paymentId, p.id).first<any>()
+    if (!payment) return json({ ok: false, message: 'Pagamento não encontrado.' }, 404)
+    const ok = await verifyInfinitePay(env, payload, payment)
+    return json({ ok, status: ok ? 'approved' : 'pending' })
   }
 
   return null
