@@ -1,6 +1,7 @@
 import { readCookie, sha256 } from './auth'
 import { pricingForOrigin } from './platform-pricing'
 import { sendReservationCreatedEmail } from './email-notifications'
+import { syncPortalAppointmentToGoogle } from './google-calendar-sync'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
@@ -21,6 +22,7 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     const existing=await env.DB.prepare(`SELECT a.id,a.amount_cents,a.reserved_until,a.payment_deadline_at,a.status FROM appointments a WHERE a.patient_id=? AND a.availability_id=? AND a.status='pending_payment' ORDER BY a.id DESC LIMIT 1`).bind(p.id,slotId).first<any>()
     if(existing&&(!existing.payment_deadline_at||new Date(existing.payment_deadline_at).getTime()>Date.now())){
       await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
+      await syncPortalAppointmentToGoogle(env,Number(existing.id)).catch(()=>null)
       await sendReservationCreatedEmail(env,Number(existing.id))
       return json({ok:true,appointment_id:Number(existing.id),reserved_until:existing.reserved_until,payment_deadline_at:existing.payment_deadline_at||existing.reserved_until,amount_cents:Number(existing.amount_cents||0),reused:true},200)
     }
@@ -37,6 +39,7 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
     try{
       const result=await env.DB.prepare(`INSERT INTO appointments (patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state) VALUES (?,?,'pending_payment',?,?,?,'standard','awaiting_payment')`).bind(p.id,slotId,amount,paymentDeadline,paymentDeadline).run()
       const appointmentId=Number(result.meta.last_row_id)
+      await syncPortalAppointmentToGoogle(env,appointmentId).catch(()=>null)
       await sendReservationCreatedEmail(env,appointmentId)
       return json({ok:true,appointment_id:appointmentId,reserved_until:paymentDeadline,payment_deadline_at:paymentDeadline,amount_cents:amount,pricing_origin:pricing.origin},201)
     }catch(error){await env.DB.prepare(`UPDATE availability SET status='free' WHERE id=? AND status='held'`).bind(slotId).run();throw error}
