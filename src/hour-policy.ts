@@ -51,6 +51,7 @@ export async function handleHourlyPolicy(request:Request,env:Env,path:string):Pr
   const id=Number(match[1]),data=await request.json().catch(()=>({})) as any
   const appt=await env.DB.prepare(`SELECT a.*,av.starts_at AS old_starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=?`).bind(id,p.id).first<any>()
   if(!appt||appt.status!=='confirmed')return json({ok:false,message:'Esta sessão não pode ser reagendada.'},409)
+  if(String(appt.reservation_kind||'standard')==='standard')return json({ok:false,message:'Consultas reservadas diretamente pelo paciente não possuem reagendamento pelo portal.'},409)
   if(new Date(appt.old_starts_at).getTime()-Date.now()<24*3600000)return json({ok:false,message:'O reagendamento pelo portal é permitido até 24 horas antes da sessão.'},409)
   const newSlot=await env.DB.prepare(`SELECT * FROM availability WHERE id=? AND status='free'`).bind(Number(data.slot_id)).first<any>();if(!newSlot)return json({ok:false,message:'O novo horário não está mais disponível.'},409)
   const claim=await env.DB.prepare(`UPDATE availability SET status='confirmed',public_visibility='visible',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(newSlot.id).run();if(!Number(claim.meta.changes||0))return json({ok:false,message:'O novo horário acabou de ser ocupado.'},409)
