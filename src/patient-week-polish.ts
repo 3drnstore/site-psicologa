@@ -1,6 +1,8 @@
 let installed=false
 let weekOffset=0
 let bypass=false
+let chosenDateText=''
+let chosenTimeText=''
 
 type CachedWeek={body:string;status:number;contentType:string}
 const weekCache=new Map<number,Promise<CachedWeek>>()
@@ -32,6 +34,16 @@ function primeAdjacent(){
   if(weekOffset>0)void preloadWeek(weekOffset-1).catch(()=>null)
 }
 
+function applyChosenDate(){
+  if(!chosenDateText||!chosenTimeText)return
+  const choice=document.querySelector<HTMLElement>('.patient-booking-choice')
+  if(!choice)return
+  const currentDate=choice.querySelector('[data-chosen-date]')?.textContent||''
+  const currentTime=choice.querySelector('[data-chosen-time]')?.textContent||''
+  if(currentDate===chosenDateText&&currentTime===chosenTimeText)return
+  choice.innerHTML=`<div><small>Data escolhida:</small><strong data-chosen-date>${chosenDateText}</strong></div><div><small>Horário escolhido:</small><strong data-chosen-time>${chosenTimeText}</strong></div>`
+}
+
 function updateChosenDate(button:HTMLButtonElement){
   const day=button.closest<HTMLElement>('.patient-week-day')
   const grid=button.closest<HTMLElement>('.patient-week-grid')
@@ -39,12 +51,9 @@ function updateChosenDate(button:HTMLButtonElement){
   const index=Array.from(grid.children).indexOf(day)
   if(index<0)return
   const date=addDays(mondayOf(new Date()),weekOffset*7+index)
-  window.setTimeout(()=>{
-    const choice=document.querySelector<HTMLElement>('.patient-booking-choice')
-    if(!choice)return
-    const time=button.querySelector('span')?.textContent||choice.querySelector('strong')?.textContent||'Selecione um horário'
-    choice.innerHTML=`<div><small>Data escolhida:</small><strong>${weekday(date)}, ${ddmm(date)}</strong></div><div><small>Horário escolhido:</small><strong>${time}</strong></div>`
-  },0)
+  chosenDateText=`${weekday(date)}, ${ddmm(date)}`
+  chosenTimeText=button.querySelector('span')?.textContent||'Selecione um horário'
+  window.setTimeout(applyChosenDate,0)
 }
 
 function installCachedFetch(offset:number,data:CachedWeek){
@@ -68,6 +77,8 @@ async function switchWeek(button:HTMLButtonElement,direction:1|-1){
   if(nextOffset===weekOffset&&direction<0)return
   const host=document.querySelector<HTMLElement>('.patient-stable-view')
   host?.classList.add('week-changing')
+  chosenDateText=''
+  chosenTimeText=''
   try{
     const data=await preloadWeek(nextOffset)
     installCachedFetch(nextOffset,data)
@@ -109,8 +120,18 @@ export function installPatientWeekPolish(){
     void switchWeek((next||prev)!,next?1:-1)
   },true)
   document.addEventListener('click',event=>{
-    const tab=(event.target as HTMLElement|null)?.closest<HTMLButtonElement>('[data-patient-tab="agenda"]')
-    if(tab)schedulePrime()
+    const target=event.target as HTMLElement|null
+    const tab=target?.closest<HTMLButtonElement>('[data-patient-tab="agenda"]')
+    if(tab){chosenDateText='';chosenTimeText='';schedulePrime()}
+    if(target?.closest('[data-reserve]')){
+      ;[0,80,180,350,700].forEach(delay=>window.setTimeout(applyChosenDate,delay))
+    }
   },true)
-  window.addEventListener('pageshow',schedulePrime)
+  const observer=new MutationObserver(records=>{
+    if(!chosenDateText||!chosenTimeText)return
+    const changed=records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node instanceof HTMLElement&&(node.matches('.patient-booking-choice,.patient-booking-box')||Boolean(node.querySelector?.('.patient-booking-choice,.patient-booking-box')))))
+    if(changed)window.setTimeout(applyChosenDate,0)
+  })
+  observer.observe(document.body,{childList:true,subtree:true})
+  window.addEventListener('pageshow',()=>{schedulePrime();window.setTimeout(applyChosenDate,0)})
 }
