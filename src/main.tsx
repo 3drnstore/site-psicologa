@@ -41,6 +41,7 @@ import { installTerminologyEnhancer } from './terminology-enhancer'
 import { installSessionManagementUi } from './session-management-ui'
 import { installPatientFlowHotfix } from './patient-flow-hotfix'
 import { installAdminReceitaSaudeEnhancer } from './admin-receita-saude-enhancer'
+import { installAdminFinanceEnhancer } from './admin-finance-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -96,6 +97,7 @@ safeInstall('anotações clínicas',installAdminClinicalNotesEnhancer)
 safeInstall('senhas',installPasswordEnhancer)
 safeInstall('calendário administrativo',installAdminCalendarEnhancer)
 safeInstall('estado administrativo',installAdminStateEnhancer)
+safeInstall('financeiro administrativo',installAdminFinanceEnhancer)
 safeInstall('consultas administrativas',installAdminConsultationsV2)
 safeInstall('segurança administrativa',installAdminSecurityEnhancer)
 safeInstall('segurança de sessão administrativa',installAdminSessionSecurityEnhancer)
