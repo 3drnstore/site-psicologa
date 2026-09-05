@@ -1,10 +1,18 @@
 import type { Env } from './types'
 
-const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[c]||c))
-const dateLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',timeZone:'America/Sao_Paulo'}).format(new Date(v))
-const dateTimeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(v))
-const timeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(v))
+const TZ='America/Sao_Paulo'
+const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":'&#39;'}[c]||c))
+const dateLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',timeZone:TZ}).format(new Date(v))
+const dateTimeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:TZ}).format(new Date(v))
+const timeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:TZ}).format(new Date(v))
 const MAX_EMAIL_ATTEMPTS=4
+
+function localDayNumber(v:string|Date){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(v instanceof Date?v:new Date(v))
+  const y=Number(parts.find(p=>p.type==='year')?.value||0),m=Number(parts.find(p=>p.type==='month')?.value||0),d=Number(parts.find(p=>p.type==='day')?.value||0)
+  return Math.floor(Date.UTC(y,m-1,d)/86400000)
+}
+const daysUntil=(v:string)=>localDayNumber(v)-localDayNumber(new Date())
 
 function subjectFor(kind:string){
   const map:Record<string,string>={
@@ -78,33 +86,34 @@ async function recurringCreated(env:Env){
 }
 
 async function reliableRecurringPaymentReminders(env:Env){
-  const now=Date.now(),upper=new Date(now+72*3600000).toISOString(),lower=new Date(now).toISOString()
+  const lower=new Date().toISOString(),upper=new Date(Date.now()+4*86400000).toISOString()
   const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,a.payment_deadline_at,a.reserved_until,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment' AND a.reservation_kind='recurring' AND av.starts_at>? AND av.starts_at<=? ORDER BY av.starts_at`).bind(lower,upper).all<any>()
   for(const row of rows.results||[]){
-    const startsAt=new Date(row.starts_at).getTime(),deadlineRaw=row.payment_deadline_at||row.reserved_until
-    if(!deadlineRaw||new Date(deadlineRaw).getTime()<=now)continue
-    const hours=(startsAt-now)/3600000,deadline=dateTimeLabel(deadlineRaw)
-    if(hours<=50){
+    const deadlineRaw=row.payment_deadline_at||row.reserved_until
+    if(!deadlineRaw||new Date(deadlineRaw).getTime()<=Date.now())continue
+    const days=daysUntil(row.starts_at),deadline=dateTimeLabel(deadlineRaw)
+    if(days===2){
       if(await notificationAlreadyExists(env,Number(row.id),'payment_final'))continue
       const message=`Último lembrete: confirme sua sessão de ${dateLabel(row.starts_at)} às ${timeLabel(row.starts_at)} até ${deadline}.`
-      await deliver(env,Number(row.patient_id),Number(row.id),'payment_final',message,`auto-pay50:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
+      await deliver(env,Number(row.patient_id),Number(row.id),'payment_final',message,`auto-pay2d:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
       continue
     }
-    if(hours<=72){
+    if(days===3){
       if(await notificationAlreadyExists(env,Number(row.id),'payment_reminder'))continue
       const message=`Sua próxima sessão está reservada para ${dateLabel(row.starts_at)} às ${timeLabel(row.starts_at)}. Confirme o pagamento até ${deadline}.`
-      await deliver(env,Number(row.patient_id),Number(row.id),'payment_reminder',message,`auto-pay72:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
+      await deliver(env,Number(row.patient_id),Number(row.id),'payment_reminder',message,`auto-pay3d:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
     }
   }
 }
 
 async function reliableAppointmentReminders(env:Env){
-  const now=Date.now(),from=new Date(now+30*60000).toISOString(),to=new Date(now+24*3600000).toISOString()
-  const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='confirmed' AND av.starts_at>=? AND av.starts_at<=? ORDER BY av.starts_at`).bind(from,to).all<any>()
+  const from=new Date().toISOString(),to=new Date(Date.now()+2*86400000).toISOString()
+  const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='confirmed' AND av.starts_at>? AND av.starts_at<=? ORDER BY av.starts_at`).bind(from,to).all<any>()
   for(const row of rows.results||[]){
+    if(daysUntil(row.starts_at)!==1)continue
     if(await notificationAlreadyExists(env,Number(row.id),'appointment_reminder'))continue
     const message=`Lembrete: sua consulta está confirmada para ${dateLabel(row.starts_at)} às ${timeLabel(row.starts_at)}.`
-    await deliver(env,Number(row.patient_id),Number(row.id),'appointment_reminder',message,`appt24:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
+    await deliver(env,Number(row.patient_id),Number(row.id),'appointment_reminder',message,`appt1d:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
   }
 }
 
