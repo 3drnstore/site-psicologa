@@ -27,6 +27,7 @@ import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile
 import { handleClinicalApi } from './clinical-api'
 import { handleAdminPatientOverview } from './admin-patient-overview'
 import { runEmailNotificationTasks } from './email-notifications'
+import { handleHourlyPolicy, normalizeHourlyDeadlines } from './hour-policy'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -84,6 +85,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const roleBlocked = await guardAdminRole(request, env, path); if (roleBlocked) return roleBlocked
 
   await touchRecurrence(request, env, path)
+  const hourlyPolicy = await handleHourlyPolicy(request, env, path); if (hourlyPolicy) return hourlyPolicy
+  if (path === '/api/appointments/mine' || path === '/api/payments/checkout') await normalizeHourlyDeadlines(env)
   const sessionManagement = await handleSessionManagement(request, env, path)
   if (sessionManagement) return sessionManagement
 
@@ -130,6 +133,6 @@ export default {
     catch (error) { console.error('Schema/bootstrap error:', error instanceof Error ? error.message : String(error)); return withSecurityHeaders(apiError('O sistema está temporariamente indisponível. Tente novamente em alguns instantes.'), path) }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await runScheduledSessionTasks(env); await runEmailNotificationTasks(env) })())
+    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await normalizeHourlyDeadlines(env); await runScheduledSessionTasks(env); await runEmailNotificationTasks(env) })())
   },
 }
