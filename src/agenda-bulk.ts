@@ -1,5 +1,5 @@
 import { readCookie, sha256 } from './auth'
-import { removePortalAvailabilityFromGoogle, syncPortalAvailabilityToGoogle } from './google-calendar-sync'
+import { removePortalAvailabilityFromGoogleDetailed, syncPortalAvailabilityToGoogleDetailed, type GoogleCalendarWriteResult } from './google-calendar-sync'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
@@ -16,6 +16,10 @@ async function admin(request:Request,env:Env){
 async function tableExists(env:Env,name:string){return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())}
 function validCell(cell:Cell){const s=new Date(cell.starts_at),e=new Date(cell.ends_at);if(Number.isNaN(s.getTime())||Number.isNaN(e.getTime())||e<=s)return false;const weekday=s.getUTCDay(),duration=(e.getTime()-s.getTime())/60000;return weekday>=1&&weekday<=6&&duration===50}
 function isPastCell(cell:Cell){return new Date(cell.starts_at).getTime()<Date.now()}
+function compactGoogleError(result:GoogleCalendarWriteResult){
+  const http=result.status?`HTTP ${result.status}`:''
+  return [result.stage,http,result.error].filter(Boolean).join(' — ').slice(0,700)
+}
 
 export async function handleAgendaBulk(request:Request,env:Env,path:string):Promise<Response|null>{
   if(path!=='/api/admin/availability/bulk'||request.method!=='POST')return null
@@ -50,12 +54,25 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
   }
 
   let googleAttempts=0,googleFailures=0
-  for(const id of deleteIds){googleAttempts++;try{if(!(await removePortalAvailabilityFromGoogle(env,id)))googleFailures++}catch{googleFailures++}}
+  const googleErrors:string[]=[]
+  for(const id of deleteIds){
+    googleAttempts++
+    try{const result=await removePortalAvailabilityFromGoogleDetailed(env,id);if(!result.ok){googleFailures++;googleErrors.push(compactGoogleError(result))}}
+    catch(error:any){googleFailures++;googleErrors.push(`exception — ${String(error?.message||error||'erro desconhecido').slice(0,500)}`)}
+  }
   if(statements.length)await env.DB.batch(statements)
-  if(mode!=='delete')for(const cell of changedCells){const row=await env.DB.prepare(`SELECT id FROM availability WHERE starts_at=? AND ends_at=? ORDER BY id DESC LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>();if(row?.id){googleAttempts++;try{if(!(await syncPortalAvailabilityToGoogle(env,Number(row.id))))googleFailures++}catch{googleFailures++}}}
+  if(mode!=='delete')for(const cell of changedCells){
+    const row=await env.DB.prepare(`SELECT id FROM availability WHERE starts_at=? AND ends_at=? ORDER BY id DESC LIMIT 1`).bind(cell.starts_at,cell.ends_at).first<any>()
+    if(row?.id){
+      googleAttempts++
+      try{const result=await syncPortalAvailabilityToGoogleDetailed(env,Number(row.id));if(!result.ok){googleFailures++;googleErrors.push(compactGoogleError(result))}}
+      catch(error:any){googleFailures++;googleErrors.push(`exception — ${String(error?.message||error||'erro desconhecido').slice(0,500)}`)}
+    }
+  }
 
   const changed=changedCells.length
   const base=skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou sessão confirmada.`:`${changed} horário(s) alterado(s).`
-  const googleMessage=googleAttempts===0?' Google Agenda: nenhuma sincronização foi necessária.':googleFailures?` Google Agenda: FALHA em ${googleFailures} de ${googleAttempts} tentativa(s).`:` Google Agenda: sincronização enviada com sucesso (${googleAttempts} tentativa(s)).`
-  return json({ok:true,changed,skipped,changed_cells:changedCells,google_sync:{attempted:googleAttempts,failed:googleFailures,ok:googleFailures===0},message:`${base}${googleMessage}`})
+  const firstError=googleErrors[0]||''
+  const googleMessage=googleAttempts===0?' Google Agenda: nenhuma sincronização foi necessária.':googleFailures?` Google Agenda: FALHA em ${googleFailures} de ${googleAttempts} tentativa(s).${firstError?` Detalhe: ${firstError}`:''}`:` Google Agenda: sincronização enviada com sucesso (${googleAttempts} tentativa(s)).`
+  return json({ok:true,changed,skipped,changed_cells:changedCells,google_sync:{attempted:googleAttempts,failed:googleFailures,ok:googleFailures===0,errors:googleErrors.slice(0,10)},message:`${base}${googleMessage}`})
 }
