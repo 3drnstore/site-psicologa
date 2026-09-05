@@ -42,11 +42,47 @@ function standardPortalRanges(range:{starts_at:string;ends_at:string}){
   return blocks
 }
 
+export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number){
+  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return null
+  const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
+  if(!appointment||!['pending_payment','confirmed'].includes(String(appointment.status)))return null
+  if(appointment.google_calendar_event_id)return String(appointment.google_calendar_event_id)
+  const token=await accessToken(env);if(!token)return null
+  const calendar=encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
+  const response=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events`,{
+    method:'POST',
+    headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+    body:JSON.stringify({
+      summary:`Sessão – ${appointment.full_name}`,
+      description:'Horário reservado pelo portal de atendimento.',
+      start:{dateTime:appointment.starts_at,timeZone:'America/Sao_Paulo'},
+      end:{dateTime:appointment.ends_at,timeZone:'America/Sao_Paulo'},
+    }),
+  })
+  if(!response.ok)return null
+  const event=await response.json() as any
+  if(event.id)await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(event.id,appointmentId).run()
+  return event.id||null
+}
+
+async function cleanupInactivePortalEvents(env:Env,token:string){
+  const rows=await env.DB.prepare(`SELECT id,google_calendar_event_id FROM appointments WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed')`).all<any>()
+  const calendar=encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
+  for(const row of rows.results||[]){
+    const eventId=String(row.google_calendar_event_id||'');if(!eventId)continue
+    await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events/${encodeURIComponent(eventId)}`,{method:'DELETE',headers:{authorization:`Bearer ${token}`}}).catch(()=>null)
+    await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(row.id).run()
+  }
+}
+
 export async function syncGoogleCalendarAvailability(env:Env,from:string,to:string,force=false){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{configured:false,synced:false}
   const syncKey=rangeSyncKey(from,to)
   if(!force&&Date.now()-await lastSync(env,syncKey)<SYNC_TTL_MS)return{configured:true,synced:false,cached:true}
   const token=await accessToken(env);if(!token)return{configured:true,synced:false,error:'token'}
+  await cleanupInactivePortalEvents(env,token)
+  const activeAppointments=await env.DB.prepare(`SELECT a.id FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status IN ('pending_payment','confirmed') AND av.starts_at<? AND av.ends_at>?`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
+  for(const row of activeAppointments.results||[])await syncPortalAppointmentToGoogle(env,Number(row.id))
   const calendar=encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
   const url=new URL(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events`)
   url.searchParams.set('timeMin',new Date(from).toISOString());url.searchParams.set('timeMax',new Date(to).toISOString());url.searchParams.set('singleEvents','true');url.searchParams.set('orderBy','startTime');url.searchParams.set('maxResults','2500')
@@ -73,9 +109,7 @@ export async function syncGoogleCalendarAvailability(env:Env,from:string,to:stri
     if((overlaps.results||[]).length)continue
     const source=`${PREFIX_EVENT}${eventId}`;activeSources.add(source)
     const blocks=standardPortalRanges(range)
-    for(const block of blocks){
-      await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(block.starts_at,block.ends_at,source).run()
-    }
+    for(const block of blocks){await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'occupied','visible',?)`).bind(block.starts_at,block.ends_at,source).run()}
   }
   const imported=await env.DB.prepare(`SELECT id,source,status FROM availability WHERE (source LIKE 'google_calendar_slot:%' OR source LIKE 'google_calendar_event:%') AND starts_at<? AND ends_at>?`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
   for(const row of imported.results||[]){
