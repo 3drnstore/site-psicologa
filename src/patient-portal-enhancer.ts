@@ -217,7 +217,7 @@ async function renderAgenda() {
   h.innerHTML = '<div class="patient-view-loading">Carregando agenda...</div>'
   try {
     const start = addDays(mondayOf(new Date()), weekOffset * 7)
-    const end = addDays(start, 4)
+    const end = addDays(start, 5)
     const data = await request(`/api/availability?from=${encodeURIComponent(ymd(start))}&to=${encodeURIComponent(ymd(end))}`)
     agendaSlots = data.slots || []
     agendaPix = Number(data.pix_price_cents || data.consultation_price_cents || 0)
@@ -232,7 +232,7 @@ async function renderAgenda() {
       const key = dateKey(slot.starts_at)
       byDay.set(key, [...(byDay.get(key) || []), slot])
     })
-    const days = Array.from({ length: 5 }, (_, index) => addDays(start, index))
+    const days = Array.from({ length: 6 }, (_, index) => addDays(start, index))
     const now = Date.now()
 
     h.innerHTML = `
