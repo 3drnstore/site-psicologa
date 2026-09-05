@@ -24,4 +24,31 @@
   background:transparent!important;
   box-shadow:none!important;
 }
-@media(max-width:760px){.patient-booking-choice{grid-template-columns:1fr}}
+
+/* Mensagens de reserva/pagamento passam a fazer parte visualmente do card flutuante. */
+.patient-booking-box + .patient-action-message{
+  box-sizing:border-box;
+  width:min(1120px,100%);
+  min-height:0;
+  margin:-1px auto 0;
+  padding:0 18px 12px;
+  background:#f3efe4;
+  border:1px solid #ded7c7;
+  border-top:0;
+  border-radius:0 0 14px 14px;
+  color:#5e746d;
+  font-size:12px;
+  line-height:1.45;
+  text-align:left;
+  box-shadow:0 8px 20px rgba(55,70,64,.04);
+}
+.patient-booking-box + .patient-action-message:empty{display:none}
+.patient-booking-box:has(+ .patient-action-message:not(:empty)){
+  border-radius:14px 14px 0 0;
+  border-bottom-color:transparent;
+}
+
+@media(max-width:760px){
+  .patient-booking-choice{grid-template-columns:1fr}
+  .patient-booking-box + .patient-action-message{width:100%;padding:0 14px 12px}
+}
