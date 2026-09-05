@@ -3,6 +3,7 @@
   "name": "site-psicologa",
   "main": "src/entry.ts",
   "compatibility_date": "2026-09-01",
+  "keep_vars": true,
   "vars": {
     "APP_ORIGIN": "https://site-psicologa.thiagodrn2.workers.dev",
     "MERCADOPAGO_TEST_MODE": "true"
