@@ -42,22 +42,44 @@ function standardPortalRanges(range:{starts_at:string;ends_at:string}){
   return blocks
 }
 
+function portalEventContent(appointment:any){
+  const confirmed=String(appointment.status)==='confirmed'
+  return{
+    summary:confirmed
+      ? `Sessão – ${appointment.full_name} (Confirmada)`
+      : `Reserva – ${appointment.full_name} (Pendente de pagamento)`,
+    description:confirmed
+      ? `Sessão confirmada pelo portal. Contato: ${appointment.phone||appointment.email||''}.`
+      : `Horário reservado pelo portal e aguardando confirmação de pagamento. Contato: ${appointment.phone||appointment.email||''}.`,
+    start:{dateTime:appointment.starts_at,timeZone:'America/Sao_Paulo'},
+    end:{dateTime:appointment.ends_at,timeZone:'America/Sao_Paulo'},
+  }
+}
+
 export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return null
   const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
   if(!appointment||!['pending_payment','confirmed'].includes(String(appointment.status)))return null
-  if(appointment.google_calendar_event_id)return String(appointment.google_calendar_event_id)
   const token=await accessToken(env);if(!token)return null
   const calendar=encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
+  const content=portalEventContent(appointment)
+
+  if(appointment.google_calendar_event_id){
+    const eventId=String(appointment.google_calendar_event_id)
+    const response=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events/${encodeURIComponent(eventId)}`,{
+      method:'PATCH',
+      headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+      body:JSON.stringify(content),
+    })
+    if(response.ok)return eventId
+    if(response.status!==404&&response.status!==410)return null
+    await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
+  }
+
   const response=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendar}/events`,{
     method:'POST',
     headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
-    body:JSON.stringify({
-      summary:`Sessão – ${appointment.full_name}`,
-      description:'Horário reservado pelo portal de atendimento.',
-      start:{dateTime:appointment.starts_at,timeZone:'America/Sao_Paulo'},
-      end:{dateTime:appointment.ends_at,timeZone:'America/Sao_Paulo'},
-    }),
+    body:JSON.stringify(content),
   })
   if(!response.ok)return null
   const event=await response.json() as any
