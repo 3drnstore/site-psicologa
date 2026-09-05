@@ -1,7 +1,7 @@
 import { adminAuthSchemaStatus } from './admin-auth-schema'
 import type { Env } from './types'
 
-export const APP_RELEASE = '2026.09.04-email-diagnostics-v1'
+export const APP_RELEASE = '2026.09.04-email-diagnostics-v2'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -10,6 +10,15 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
     'cache-control': 'no-store',
   },
 })
+
+function sanitizeEmailError(value: unknown): string | null {
+  if (!value) return null
+  let text = String(value)
+  text = text.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+  text = text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+  text = text.replace(/re_[A-Za-z0-9_-]+/g, '[api_key]')
+  return text.slice(0, 500)
+}
 
 export async function handleHealthApi(request: Request, env: Env, path: string): Promise<Response | null> {
   if (path !== '/api/health' || request.method !== 'GET') return null
@@ -44,6 +53,13 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
         FROM patient_notifications
         WHERE channel='email' AND created_at>=datetime('now','-1 day')
       `).first<any>()
+      const lastFailure = await env.DB.prepare(`
+        SELECT error_message, created_at
+        FROM patient_notifications
+        WHERE channel='email' AND status='failed'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).first<any>()
       email = {
         provider: 'resend',
         api_key_configured: Boolean(env.RESEND_API_KEY),
@@ -54,6 +70,8 @@ export async function handleHealthApi(request: Request, env: Env, path: string):
         failed_last_24h: Number(stats?.failed || 0),
         sending_last_24h: Number(stats?.sending || 0),
         pending_last_24h: Number(stats?.pending || 0),
+        last_failed_at: lastFailure?.created_at || null,
+        last_failed_error: sanitizeEmailError(lastFailure?.error_message),
       }
     }
 
