@@ -56,6 +56,6 @@ export async function handleAgendaBulk(request:Request,env:Env,path:string):Prom
 
   const changed=changedCells.length
   const base=skipped?`${changed} horário(s) alterado(s); ${skipped} não puderam ser alterados por conflito, reserva ou sessão confirmada.`:`${changed} horário(s) alterado(s).`
-  const message=googleFailures?`${base} A alteração foi salva no site, mas ${googleFailures} sincronização(ões) com a Google Agenda falharam.`:base
-  return json({ok:true,changed,skipped,changed_cells:changedCells,google_sync:{attempted:googleAttempts,failed:googleFailures,ok:googleFailures===0},message})
+  const googleMessage=googleAttempts===0?' Google Agenda: nenhuma sincronização foi necessária.':googleFailures?` Google Agenda: FALHA em ${googleFailures} de ${googleAttempts} tentativa(s).`:` Google Agenda: sincronização enviada com sucesso (${googleAttempts} tentativa(s)).`
+  return json({ok:true,changed,skipped,changed_cells:changedCells,google_sync:{attempted:googleAttempts,failed:googleFailures,ok:googleFailures===0},message:`${base}${googleMessage}`})
 }
