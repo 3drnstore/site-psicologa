@@ -22,6 +22,14 @@ function writeSessionCache(key: string, value: unknown) { try { sessionStorage.s
 function readSessionCache<T>(key: string): T | null { try { const raw=sessionStorage.getItem(key); return raw ? JSON.parse(raw) as T : null } catch { return null } }
 function clearSessionCache(key: string) { try { sessionStorage.removeItem(key) } catch {} }
 
+function dateOnly(value:Date){return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`}
+function currentPatientWeek(){
+  const start=new Date();start.setHours(0,0,0,0)
+  const day=start.getDay();start.setDate(start.getDate()-(day===0?6:day-1))
+  const end=new Date(start);end.setDate(end.getDate()+5)
+  return{from:dateOnly(start),to:dateOnly(end)}
+}
+
 async function loginPatient(email: string, password: string) {
   const result = await request<any>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
   if (result?.patient) writeSessionCache(PATIENT_CACHE_KEY, result.patient)
@@ -49,7 +57,7 @@ export const api = {
   login: loginPatient,
   logout: async () => { try { return await request('/api/auth/logout', { method: 'POST' }) } finally { clearSessionCache(PATIENT_CACHE_KEY) } },
   me: currentPatient,
-  availability: (from?: string, to?: string) => request<any>(`/api/availability?from=${encodeURIComponent(from || '')}&to=${encodeURIComponent(to || '')}`).catch(() => ({ ok: true, slots: [], consultation_price_cents: 0, card_price_cents: 0, pix_price_cents: 0 })),
+  availability: (from?: string, to?: string) => { const range=(!from&&!to)?currentPatientWeek():{from:from||'',to:to||''}; return request<any>(`/api/availability?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).catch(() => ({ ok: true, slots: [], consultation_price_cents: 0, card_price_cents: 0, pix_price_cents: 0 })) },
   reserve: (slotId: string | number) => request<any>('/api/appointments/reserve', { method: 'POST', body: JSON.stringify({ slot_id: slotId }) }),
   myAppointments: () => request<any>('/api/appointments/mine').catch(() => ({ ok: true, appointments: [] })),
   cancelAppointment: (appointmentId: string | number) => request(`/api/appointments/${appointmentId}/cancel`, { method: 'POST' }),
