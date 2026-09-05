@@ -5,6 +5,8 @@ const PREFIX_SLOT='google_calendar_slot:'
 const PREFIX_EVENT='google_calendar_event:'
 const AVAILABILITY_EVENT_KEY='google_availability_event:'
 
+export type GoogleCalendarWriteResult={ok:boolean;stage:string;status?:number;error?:string;event_id?:string}
+
 async function accessToken(env:Env){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return null
   const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'})})
@@ -13,6 +15,22 @@ async function accessToken(env:Env){
 }
 const calendarId=(env:Env)=>encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
 const eventUrl=(env:Env,eventId?:string)=>`https://www.googleapis.com/calendar/v3/calendars/${calendarId(env)}/events${eventId?`/${encodeURIComponent(eventId)}`:''}`
+
+async function googleWriteError(response:Response,stage:string):Promise<GoogleCalendarWriteResult>{
+  let message=`Google Calendar respondeu HTTP ${response.status}.`
+  try{
+    const body=await response.json() as any
+    const apiError=body?.error
+    const apiMessage=String(apiError?.message||body?.message||'').trim()
+    const reason=Array.isArray(apiError?.errors)?String(apiError.errors[0]?.reason||'').trim():''
+    const status=String(apiError?.status||'').trim()
+    const parts=[apiMessage,status&&status!==apiMessage?status:'',reason&&reason!==apiMessage?reason:''].filter(Boolean)
+    if(parts.length)message=parts.join(' | ')
+  }catch{
+    try{const text=(await response.text()).trim();if(text)message=text.slice(0,500)}catch{}
+  }
+  return{ok:false,stage,status:response.status,error:message.slice(0,500)}
+}
 
 function eventRange(event:any){
   const startRaw=event?.start?.dateTime||event?.start?.date,endRaw=event?.end?.dateTime||event?.end?.date
@@ -57,24 +75,48 @@ export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number
 
 const availabilityKey=(id:number)=>`${AVAILABILITY_EVENT_KEY}${id}`
 async function availabilityEventId(env:Env,id:number){const row=await env.DB.prepare(`SELECT value FROM settings WHERE key=?`).bind(availabilityKey(id)).first<any>();return row?.value?String(row.value):''}
-export async function removePortalAvailabilityFromGoogle(env:Env,id:number){
-  const eventId=await availabilityEventId(env,id);if(!eventId)return true
-  const token=await accessToken(env);if(!token)return false
-  const response=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({summary:'Horário liberado no Portal',description:'Este horário não está mais bloqueado pelo portal.',transparency:'transparent',extendedProperties:{private:{portal_source:'site-psicologa',portal_kind:'availability_released',availability_id:String(id)}}})}).catch(()=>null)
-  return Boolean(response?.ok||response?.status===404||response?.status===410)
+
+export async function removePortalAvailabilityFromGoogleDetailed(env:Env,id:number):Promise<GoogleCalendarWriteResult>{
+  const eventId=await availabilityEventId(env,id);if(!eventId)return{ok:true,stage:'nothing_to_release'}
+  const token=await accessToken(env);if(!token)return{ok:false,stage:'access_token',error:'Não foi possível obter um access token do Google.'}
+  let response:Response
+  try{
+    response=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({summary:'Horário liberado no Portal',description:'Este horário não está mais bloqueado pelo portal.',transparency:'transparent',extendedProperties:{private:{portal_source:'site-psicologa',portal_kind:'availability_released',availability_id:String(id)}}})})
+  }catch(error:any){return{ok:false,stage:'release_patch_network',error:String(error?.message||'Falha de rede ao atualizar o Google Calendar.').slice(0,500)}}
+  if(response.ok||response.status===404||response.status===410)return{ok:true,stage:'release_patch',status:response.status,event_id:eventId}
+  return googleWriteError(response,'release_patch')
 }
-export async function syncPortalAvailabilityToGoogle(env:Env,id:number){
+
+export async function removePortalAvailabilityFromGoogle(env:Env,id:number){return (await removePortalAvailabilityFromGoogleDetailed(env,id)).ok}
+
+export async function syncPortalAvailabilityToGoogleDetailed(env:Env,id:number):Promise<GoogleCalendarWriteResult>{
   const row=await env.DB.prepare(`SELECT id,starts_at,ends_at,status,source,public_visibility FROM availability WHERE id=?`).bind(id).first<any>()
-  if(!row)return removePortalAvailabilityFromGoogle(env,id)
-  if(String(row.source||'').startsWith('google_calendar_'))return true
-  if(!['blocked','occupied'].includes(String(row.status))||String(row.public_visibility||'visible')==='hidden')return removePortalAvailabilityFromGoogle(env,id)
-  const token=await accessToken(env);if(!token)return false
+  if(!row)return removePortalAvailabilityFromGoogleDetailed(env,id)
+  if(String(row.source||'').startsWith('google_calendar_'))return{ok:true,stage:'google_import_skipped'}
+  if(!['blocked','occupied'].includes(String(row.status))||String(row.public_visibility||'visible')==='hidden')return removePortalAvailabilityFromGoogleDetailed(env,id)
+  const token=await accessToken(env);if(!token)return{ok:false,stage:'access_token',error:'Não foi possível obter um access token do Google.'}
   const content={summary:String(row.status)==='blocked'?'Agenda bloqueada (Portal)':'Horário ocupado (Portal)',description:'Bloqueio criado no painel profissional.',transparency:'opaque',start:{dateTime:row.starts_at,timeZone:'America/Sao_Paulo'},end:{dateTime:row.ends_at,timeZone:'America/Sao_Paulo'},extendedProperties:{private:{portal_source:'site-psicologa',portal_kind:'availability',availability_id:String(row.id)}}}
   let eventId=await availabilityEventId(env,id)
-  if(eventId){const patch=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)});if(patch.ok)return true;if(patch.status!==404&&patch.status!==410)return false;eventId=''}
-  const create=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)});if(!create.ok)return false
-  const event=await create.json() as any;if(!event.id)return false;await setSetting(env,availabilityKey(id),String(event.id));return true
+  if(eventId){
+    let patch:Response
+    try{patch=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})}
+    catch(error:any){return{ok:false,stage:'availability_patch_network',error:String(error?.message||'Falha de rede ao atualizar o Google Calendar.').slice(0,500)}}
+    if(patch.ok)return{ok:true,stage:'availability_patch',status:patch.status,event_id:eventId}
+    if(patch.status!==404&&patch.status!==410)return googleWriteError(patch,'availability_patch')
+    eventId=''
+  }
+  let create:Response
+  try{create=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})}
+  catch(error:any){return{ok:false,stage:'availability_create_network',error:String(error?.message||'Falha de rede ao criar evento no Google Calendar.').slice(0,500)}}
+  if(!create.ok)return googleWriteError(create,'availability_create')
+  const event=await create.json() as any
+  if(!event.id)return{ok:false,stage:'availability_create_response',status:create.status,error:'Google confirmou a criação, mas não retornou o ID do evento.'}
+  try{await setSetting(env,availabilityKey(id),String(event.id))}
+  catch(error:any){return{ok:false,stage:'persist_mapping',status:create.status,event_id:String(event.id),error:`Evento criado no Google, mas o portal não conseguiu salvar o vínculo local: ${String(error?.message||'erro no banco').slice(0,350)}`}}
+  return{ok:true,stage:'availability_create',status:create.status,event_id:String(event.id)}
 }
+
+export async function syncPortalAvailabilityToGoogle(env:Env,id:number){return (await syncPortalAvailabilityToGoogleDetailed(env,id)).ok}
 
 async function markInactivePortalAppointments(env:Env){
   await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='inactive' WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed')`).run().catch(()=>null)
