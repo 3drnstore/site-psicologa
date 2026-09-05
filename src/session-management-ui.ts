@@ -27,12 +27,19 @@ async function openAdminReschedule(a:any){
   overlay.querySelector<HTMLButtonElement>('[data-confirm]')?.addEventListener('click',async()=>{const btn=overlay.querySelector<HTMLButtonElement>('[data-confirm]')!;btn.disabled=true;try{await api(`/api/admin/appointments/${a.id}/reschedule`,{method:'POST',body:JSON.stringify({slot_id:Number(overlay.querySelector<HTMLSelectElement>('[data-slot]')?.value),reason:overlay.querySelector<HTMLTextAreaElement>('[data-reason]')?.value||''})});overlay.remove();alert('Sessão reagendada e paciente notificado.');window.location.reload()}catch(e){alert(e instanceof Error?e.message:'Não foi possível reagendar.');btn.disabled=false}})
 }
 
-function localYmd(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function localBrDate(d=new Date()){return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`}
+function brDateToYmd(value:string){
+  const match=value.trim().match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);if(!match)return null
+  const day=Number(match[1]),month=Number(match[2]),rawYear=match[3],year=rawYear.length===2?2000+Number(rawYear):Number(rawYear)
+  const test=new Date(year,month-1,day)
+  if(test.getFullYear()!==year||test.getMonth()!==month-1||test.getDate()!==day)return null
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+}
 function enhanceCancelDay(){
   const title=(document.querySelector<HTMLElement>('.admin-topbar h1')?.textContent||'').trim();if(title!=='Agenda')return
   const actions=document.querySelector<HTMLElement>('.agenda-actions');if(!actions||actions.querySelector('[data-cancel-day]'))return
   const button=document.createElement('button');button.type='button';button.dataset.cancelDay='1';button.className='admin-cancel-day';button.textContent='Cancelar agenda do dia';actions.appendChild(button)
-  button.addEventListener('click',async()=>{const date=prompt('Qual dia da agenda precisa ser cancelado? Use AAAA-MM-DD.',localYmd());if(!date)return;const reason=prompt('Informe o motivo para os pacientes, ou deixe em branco para não informar.','')??'';if(!confirm(`Cancelar a agenda de ${date}? Os pacientes confirmados serão avisados e ficarão aguardando reagendamento.`))return;button.disabled=true;try{const r=await api('/api/admin/agenda/cancel-day',{method:'POST',body:JSON.stringify({date,reason})});alert(`Agenda cancelada. ${r.affected} paciente(s) confirmado(s) afetado(s).`);window.location.reload()}catch(e){alert(e instanceof Error?e.message:'Não foi possível cancelar a agenda.');button.disabled=false}})
+  button.addEventListener('click',async()=>{const entered=prompt('Qual dia da agenda precisa ser cancelado? Use DD/MM/AA.',localBrDate());if(!entered)return;const date=brDateToYmd(entered);if(!date){alert('Data inválida. Informe no formato DD/MM/AA, por exemplo 14/09/26.');return}const reason=prompt('Informe o motivo para os pacientes, ou deixe em branco para não informar.','')??'';if(!confirm(`Cancelar a agenda de ${entered.trim()}? Os pacientes confirmados serão avisados e ficarão aguardando reagendamento.`))return;button.disabled=true;try{const r=await api('/api/admin/agenda/cancel-day',{method:'POST',body:JSON.stringify({date,reason})});alert(`Agenda cancelada. ${r.affected} paciente(s) confirmado(s) afetado(s).`);window.location.reload()}catch(e){alert(e instanceof Error?e.message:'Não foi possível cancelar a agenda.');button.disabled=false}})
 }
 
 export function installSessionManagementUi(){
