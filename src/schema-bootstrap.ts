@@ -2,7 +2,7 @@ import { ensureSchema } from './schema'
 import type { Env } from './types'
 
 const SCHEMA_VERSION_KEY='__schema_version'
-const SCHEMA_VERSION='2026-09-05-perf-v1'
+const SCHEMA_VERSION='2026-09-24-recurrence-manual-v1'
 let pending: Promise<void> | null = null
 let ready=false
 
