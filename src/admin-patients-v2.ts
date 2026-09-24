@@ -47,7 +47,7 @@ export async function handleAdminPatientsV2(request:Request,env:Env,path:string)
     let appointments:any[]=[];let clinical_notes:any[]=[];let recurrence:any=null
     if(await tableExists(env,'appointments')){const result=await env.DB.prepare(`SELECT a.id,a.status,a.amount_cents,a.paid_at,av.starts_at,av.ends_at FROM appointments a LEFT JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? ORDER BY av.starts_at DESC`).bind(id).all<any>();appointments=result.results||[]}
     if(await tableExists(env,'clinical_notes')){const result=await env.DB.prepare(`SELECT id,appointment_id,session_date,note_text,created_at,updated_at FROM clinical_notes WHERE patient_id=? ORDER BY session_date DESC,created_at DESC`).bind(id).all<any>();clinical_notes=result.results||[]}
-    if(await tableExists(env,'patient_recurrence')){recurrence=await env.DB.prepare(`SELECT id,patient_id,cadence_days,active,source_appointment_id,created_at,updated_at FROM patient_recurrence WHERE patient_id=? LIMIT 1`).bind(id).first<any>()}
+    if(await tableExists(env,'patient_recurrence')){recurrence=await env.DB.prepare(`SELECT id,patient_id,cadence_days,active,source_appointment_id,manual_reference_at,created_at,updated_at FROM patient_recurrence WHERE patient_id=? LIMIT 1`).bind(id).first<any>()}
     return json({ok:true,patient,appointments,clinical_notes,recurrence})
   }
 
