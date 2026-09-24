@@ -39,21 +39,42 @@ jobs:
             exit 1
           fi
 
-          FOUND=0
-          TMP_FILE="$(mktemp)"
-          trap 'rm -f "$TMP_FILE"' EXIT
+          BUNDLE_FILE="$(mktemp)"
+          ASSET_FILE="$(mktemp)"
+          trap 'rm -f "$BUNDLE_FILE" "$ASSET_FILE"' EXIT
 
           for ASSET in "${JS_ASSETS[@]}"; do
-            curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" -o "$TMP_FILE"
-            if grep -Fq "Atendimento psicológico individual com ética, acolhimento e respeito." "$TMP_FILE"; then
-              FOUND=1
-              break
+            curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" -o "$ASSET_FILE"
+            cat "$ASSET_FILE" >> "$BUNDLE_FILE"
+          done
+
+          REQUIRED_TEXTS=(
+            "Atendimento psicológico individual com ética, acolhimento e respeito."
+            "Sessões exclusivamente online, com privacidade e segurança."
+            "Formada em Psicologia desde 2020"
+            "Como funcionam as sessões"
+            "Atendimento clínico individual"
+            "A primeira sessão é um momento inicial de acolhimento e compreensão da demanda."
+            "As informações compartilhadas durante as sessões são tratadas com confidencialidade, respeito e responsabilidade."
+          )
+
+          for TEXT in "${REQUIRED_TEXTS[@]}"; do
+            if ! grep -Fq "$TEXT" "$BUNDLE_FILE"; then
+              echo "Required production text not found: $TEXT"
+              exit 1
             fi
           done
 
-          if [ "$FOUND" -ne 1 ]; then
-            echo "Updated hero text was not found in the production bundle."
-            exit 1
-          fi
+          FORBIDDEN_TEXTS=(
+            "Consultório de Psicologia"
+            "Atendimento On-line"
+          )
 
-          echo "Production verification passed: updated hero text found."
+          for TEXT in "${FORBIDDEN_TEXTS[@]}"; do
+            if grep -Fq "$TEXT" "$BUNDLE_FILE"; then
+              echo "Old production text is still present: $TEXT"
+              exit 1
+            fi
+          done
+
+          echo "Production verification passed for requested homepage copy."

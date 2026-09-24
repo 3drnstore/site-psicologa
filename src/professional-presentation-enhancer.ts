@@ -9,10 +9,9 @@ function ensurePresentation(){
   const presentation=document.createElement('section')
   presentation.className='professional-presentation'
   presentation.innerHTML=`
-    <span class="professional-kicker">Consultório de Psicologia</span>
     <h2>Apresentação</h2>
-    <p>Este espaço será destinado à apresentação da psicóloga, sua formação, abordagem profissional e experiência clínica.</p>
-    <p>O texto poderá explicar de forma acolhedora como é conduzido o atendimento psicológico online e para quais públicos o acompanhamento é oferecido.</p>
+    <p>Formada em Psicologia desde 2020, realizo atendimentos online, com foco em adultos e idosos que buscam apoio para lidar com questões emocionais, ansiedade, conflitos internos ou simplesmente desejam viver de forma mais leve e consciente.</p>
+    <p>Acredito na escuta acolhedora, no respeito à individualidade e na construção de caminhos possíveis para uma vida mais equilibrada. Meu propósito é ajudar a descomplicar o que pesa e tornar a vida mais leve e significativa para cada pessoa.</p>
     <p class="professional-crp">CRP: 06/212470</p>
   `
   art.prepend(presentation)

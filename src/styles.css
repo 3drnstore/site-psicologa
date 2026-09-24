@@ -73,7 +73,9 @@ a { color: inherit; text-decoration: none; }
   color: #293c36;
 }
 .hero h1 { font-size: clamp(48px, 5.3vw, 78px); line-height: 1.02; max-width: 840px; }
-.hero-copy > p { font-size: 18px; line-height: 1.75; color: #66736f; max-width: 680px; margin: 26px 0 32px; }
+.hero-copy > p, .hero-description { font-size: 18px; line-height: 1.75; color: #66736f; max-width: 680px; margin: 26px 0 32px; }
+.hero-description p { margin: 0; }
+.hero-description p + p { margin-top: 10px; }
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .trust-row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 32px; color: #66736f; font-size: 13px; }
 .trust-row span { display: flex; gap: 7px; align-items: center; }
@@ -218,7 +220,7 @@ footer { max-width: 1320px; margin: 40px auto 0; border-top: 1px solid #d8ddd8; 
   .brand small { display: none; }
   .hero { padding: 48px 22px 72px; min-height: auto; }
   .hero h1 { font-size: 44px; }
-  .hero-copy > p { font-size: 16px; }
+  .hero-copy > p, .hero-description { font-size: 16px; }
   .hero-art { min-height: 390px; }
   .floating-card { left: 0; bottom: 10px; }
   .intro, .services, .faq, .booking-callout { padding: 76px 22px; }

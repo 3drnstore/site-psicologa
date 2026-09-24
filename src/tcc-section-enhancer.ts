@@ -7,20 +7,17 @@ function applyTccSection(){
 
   section.id='como-funciona'
 
-  const kicker=section.querySelector<HTMLElement>('.section-kicker')
-  const title=section.querySelector<HTMLElement>('.section-title h2')
-  if(kicker)kicker.textContent='Como funciona'
-  if(title)title.textContent='Como a Terapia Cognitivo-Comportamental pode ajudar'
+  section.querySelector<HTMLElement>('.section-title')?.remove()
 
   const cards=[...section.querySelectorAll<HTMLElement>('.service-grid article')]
   const content=[
     {
       title:'O que é a TCC',
-      text:'A Terapia Cognitivo-Comportamental é uma abordagem psicológica que considera a relação entre pensamentos, emoções e comportamentos, ajudando a compreender como esses elementos influenciam a forma de perceber e lidar com diferentes situações.'
+      text:'A Terapia Cognitivo-Comportamental é uma abordagem psicológica que considera a relação entre pensamentos, emoções e comportamentos, nos ajudando a compreender como esses elementos influenciam a forma de perceber e lidar com diferentes situações.'
     },
     {
-      title:'Como funciona nas sessões',
-      text:'Ao longo do processo terapêutico, psicóloga e paciente observam padrões de pensamento e comportamento, identificam dificuldades presentes e constroem novas formas de compreensão e enfrentamento de acordo com as necessidades de cada pessoa.'
+      title:'Como funcionam as sessões',
+      text:'Ao longo do processo terapêutico, psicóloga e paciente observam padrões de pensamento e comportamento, identificam possíveis dificuldades presentes e constroem novas formas de compreensão e enfrentamento, de acordo com as necessidades de cada pessoa.'
     },
     {
       title:'Um processo individualizado',

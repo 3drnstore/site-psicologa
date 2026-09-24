@@ -13,7 +13,7 @@ function applyProcessCopy(){
     titleBlock.innerHTML=`
       <span class="section-kicker">Atendimento</span>
       <h2>Atendimento clínico individual</h2>
-      <p class="clinical-intro">O atendimento clínico individual é orientado pela Teoria Cognitivo-Comportamental (TCC) e acontece semanalmente em um horário fixo ou de acordo com a disponibilidade do paciente, com sessões online de 50 minutos.</p>
+      <p class="clinical-intro">O atendimento clínico individual acontece semanalmente em um horário fixo ou de acordo com a disponibilidade do paciente, com sessões online de 50 minutos.</p>
     `
   }
 
@@ -22,8 +22,7 @@ function applyProcessCopy(){
     steps.className='clinical-care-content'
     steps.innerHTML=`
       <div class="clinical-online-copy">
-        <h3>Atendimento On-line</h3>
-        <p>O atendimento ocorre através da plataforma <strong>Google Meet</strong>, ambiente virtual acessível, seguro e confortável para os pacientes.</p>
+        <p>O atendimento ocorre através da plataforma Google Meet, ambiente virtual acessível, seguro e confortável para os pacientes.</p>
       </div>
     `
   }
