@@ -32,3 +32,19 @@ html.patient-portal-mounted body::after{content:none}
 
 @media(max-width:1000px) and (min-width:761px){.patient-week-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.patient-booking-box{grid-template-columns:1fr 1fr}.patient-booking-actions{grid-column:1/-1;justify-content:flex-start}}
 @media(max-width:760px){html.patient-portal-mounted,html.patient-portal-mounted body{overflow:auto}html.patient-portal-mounted body::before,html.patient-portal-mounted body::after{display:none}.patient-sidebar[data-native-safe="1"]{position:relative;width:100%;height:auto;bottom:auto;padding:18px;gap:16px}.patient-sidebar-brand{grid-template-columns:42px 1fr}.patient-sidebar-brand::before{width:42px;height:42px}.patient-sidebar-welcome{margin-top:14px}.patient-sidebar nav{grid-template-columns:1fr;gap:3px;margin-top:0}.patient-sidebar nav button{padding:9px 12px;font-size:14px;border-radius:9px}.patient-sidebar-bottom{margin-top:0;padding:0}.patient-logout{padding:9px 12px;font-size:14px}.patient-sidebar-bottom{gap:4px}.patient-sidebar-bottom small{display:none}.patient-stable-view{position:relative;left:0;right:auto;top:auto;bottom:auto;min-height:calc(100vh - 210px);padding:24px 14px 40px}.patient-section-content{width:100%}.patient-page-title,.patient-agenda-head h1{font-size:30px!important}.patient-week-grid{grid-template-columns:1fr;width:100%}.patient-week-day{background:#fff;border:1px solid #dce5e0;border-radius:16px;padding:14px}.patient-week-day>div{grid-template-columns:repeat(2,minmax(0,1fr))}.patient-booking-box{position:static;width:100%;grid-template-columns:1fr;gap:12px}.patient-booking-actions{justify-content:flex-start}.patient-action-message{width:100%}.patient-security-grid{grid-template-columns:1fr}.patient-panel-head{display:grid;gap:4px}}
+
+.patient-sidebar-brand{width:100%;border:0;background:transparent;color:inherit;padding:0;text-align:left;font:inherit}
+.patient-sidebar-menu{display:contents}
+@media(max-width:760px){
+  .patient-sidebar[data-native-safe="1"]{padding:14px 18px;gap:0}
+  .patient-sidebar-brand{cursor:pointer;grid-template-columns:42px 1fr auto;min-height:46px}
+  .patient-sidebar-brand::after{content:"☰";grid-column:3;grid-row:1/3;align-self:center;font-size:25px;line-height:1;color:#fff;margin-left:12px}
+  .patient-sidebar.menu-open .patient-sidebar-brand::after{content:"×";font-size:31px}
+  .patient-sidebar-brand .patient-sidebar-welcome{display:none}
+  .patient-sidebar-menu{display:none;padding-top:14px}
+  .patient-sidebar.menu-open .patient-sidebar-menu{display:block}
+  .patient-sidebar nav{gap:2px}
+  .patient-sidebar nav button,.patient-logout{padding:10px 12px}
+  .patient-sidebar-bottom{margin-top:6px}
+  .patient-stable-view{min-height:calc(100vh - 74px)}
+}
