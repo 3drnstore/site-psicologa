@@ -6,14 +6,14 @@ html.patient-portal-mounted .patient-page>.patient-content{display:none!importan
 .patient-sidebar[data-native-safe="1"]{position:fixed;left:0;top:0;bottom:0;z-index:300;width:242px;background:#5f8178;color:#fff;padding:22px 20px 24px;display:flex;flex-direction:column;gap:28px;box-sizing:border-box;overflow:auto}
 .patient-sidebar-brand{position:relative;display:grid;grid-template-columns:46px 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:2px;align-items:center;min-height:48px}
 .patient-sidebar-brand::before{content:"ψ";grid-column:1;grid-row:1/3;width:46px;height:46px;border:1.5px solid rgba(255,255,255,.95);border-radius:50%;display:grid;place-items:center;color:#fff;font-family:Georgia,"Times New Roman",serif;font-size:25px}
-.patient-sidebar-brand>strong{grid-column:2;grid-row:1;font-size:0;color:#fff}.patient-sidebar-brand>strong::after{content:"PsicoGestão";font:800 12px/1.2 Inter,ui-sans-serif,system-ui,sans-serif}
+.patient-sidebar-brand>strong{grid-column:2;grid-row:1;font-size:0;color:#fff}.patient-sidebar-brand>strong::after{content:"Psicóloga Jacqueline Siqueira";font:700 11px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;white-space:normal}
 .patient-sidebar-brand>span{grid-column:2;grid-row:2;font-size:0;color:rgba(255,255,255,.92)}.patient-sidebar-brand>span::after{content:"Área do paciente";font-size:12px;line-height:1.2}
 .patient-sidebar-welcome{grid-column:1/3;margin-top:34px;padding-left:7px;font-size:13px;color:rgba(255,255,255,.94)}.patient-sidebar-welcome strong{color:#fff}
 .patient-sidebar nav{display:grid;gap:6px;margin-top:-2px}.patient-sidebar nav button{border:0;background:transparent;color:#fff;text-align:left;padding:12px 14px;border-radius:10px;font:700 16px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;cursor:pointer}.patient-sidebar nav button:hover{background:rgba(255,255,255,.1)}.patient-sidebar nav button.active{background:#fff;color:#527169}
 .patient-sidebar-bottom{margin-top:auto;display:grid;gap:14px;padding:0 7px}.patient-sidebar-bottom small{color:rgba(255,255,255,.72);font-size:12px;line-height:1.5}.patient-logout{border:0;background:transparent;color:#fff;text-align:left;padding:11px 8px;border-radius:9px;font:700 14px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;cursor:pointer}.patient-logout:hover{background:rgba(255,255,255,.1)}.patient-logout:disabled{opacity:.6}
 
 html.patient-portal-mounted body::before{content:"";position:fixed;left:242px;right:0;top:0;height:82px;z-index:270;background:#fff;border-bottom:1px solid #dde2df;box-sizing:border-box}
-html.patient-portal-mounted body::after{content:"Psicóloga Jacqueline Siqueira\A CRP 06/212470";white-space:pre;position:fixed;left:280px;top:34px;z-index:280;color:#111;font-family:Georgia,"Times New Roman",serif;font-size:13px;line-height:1.05;pointer-events:none}
+html.patient-portal-mounted body::after{content:none}
 .patient-stable-view{position:fixed;z-index:250;left:242px;right:0;top:82px;bottom:0;overflow:auto;background:#f5f7f4;color:#31423d;padding:34px 38px 48px;box-sizing:border-box}
 .patient-view-loading,.patient-view-error{max-width:1180px;margin:40px 0;padding:18px;border:1px solid #dce3df;border-radius:14px;background:#fff;color:#63716c}.patient-view-error{color:#9a4138;background:#fff3f1;border-color:#efcfca}
 .patient-section-content{width:min(1180px,100%);margin:0 auto 0 0}
