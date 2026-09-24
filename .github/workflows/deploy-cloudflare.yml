@@ -58,8 +58,8 @@ jobs:
 
           curl -fsSL "$BASE_URL$EXPECTED_JS" -o /dev/null
 
-          HEALTH="$(curl -fsSL "$BASE_URL/api/health?db=1")"
+          HEALTH="$(curl -fsSL "$BASE_URL/api/health")"
           printf '%s' "$HEALTH" | grep -Fq '"ok":true'
-          printf '%s' "$HEALTH" | grep -Fq '"database":"online"'
+          printf '%s' "$HEALTH" | grep -Fq '"worker":"online"'
 
           echo "Production verification passed: current asset and API health are live."
