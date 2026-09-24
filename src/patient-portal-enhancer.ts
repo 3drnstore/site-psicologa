@@ -89,15 +89,9 @@ async function request(path: string, init?: RequestInit) {
 }
 
 async function downloadPatientManual(){
-  const response=await fetch('/api/patient/manual',{credentials:'include',cache:'no-store'})
-  if(!response.ok){const data=await response.json().catch(()=>({})) as any;throw new Error(data.message||'Manual indisponível.')}
-  const blob=await response.blob()
-  const disposition=response.headers.get('content-disposition')||''
-  const utf=disposition.match(/filename\*=UTF-8''([^;]+)/i)
-  const name=utf?decodeURIComponent(utf[1]):'Manual do Usuário - Portal do Paciente.pdf'
-  const url=URL.createObjectURL(blob),anchor=document.createElement('a')
-  anchor.href=url;anchor.download=name;document.body.appendChild(anchor);anchor.click();anchor.remove()
-  window.setTimeout(()=>URL.revokeObjectURL(url),30000)
+  const response=await fetch('/api/patient/manual',{method:'HEAD',credentials:'include',cache:'no-store'})
+  if(!response.ok){const check=await fetch('/api/patient/manual',{credentials:'include',cache:'no-store'});const data=await check.json().catch(()=>({})) as any;throw new Error(data.message||'Manual indisponível.')}
+  window.location.assign('/api/patient/manual?download=1')
 }
 
 function currentTab(): PatientTab {
