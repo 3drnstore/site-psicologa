@@ -88,6 +88,38 @@ async function recurringReminders(env:Env){const rows=await env.DB.prepare(`SELE
 export async function runScheduledSessionTasks(env:Env){await expireUnpaidReservations(env);await recurringReminders(env);await dispatchPendingWhatsApp(env,50)}
 
 export async function handleSessionManagement(request:Request,env:Env,path:string):Promise<Response|null>{
+  if(path==='/api/appointments/history'&&request.method==='DELETE'){
+    const p=await patient(request,env)
+    if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
+
+    const rows=await env.DB.prepare(`SELECT id,availability_id FROM appointments WHERE patient_id=? ORDER BY id`).bind(p.id).all<any>()
+    const appointments=rows.results||[]
+    const receiptTable=await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='receita_saude_receipts'`).first<any>()
+
+    await env.DB.prepare(`UPDATE patient_recurrence SET active=0,source_appointment_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE patient_id=?`).bind(p.id).run()
+
+    for(const row of appointments){
+      const appointmentId=Number(row.id)
+      const availabilityId=Number(row.availability_id)
+
+      await env.DB.prepare(`UPDATE clinical_notes SET appointment_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE appointment_id=?`).bind(appointmentId).run()
+      if(receiptTable)await env.DB.prepare(`DELETE FROM receita_saude_receipts WHERE appointment_id=?`).bind(appointmentId).run()
+
+      await env.DB.batch([
+        env.DB.prepare(`DELETE FROM appointment_changes WHERE appointment_id=?`).bind(appointmentId),
+        env.DB.prepare(`DELETE FROM patient_notifications WHERE appointment_id=?`).bind(appointmentId),
+        env.DB.prepare(`DELETE FROM payments WHERE appointment_id=?`).bind(appointmentId),
+      ])
+
+      await env.DB.prepare(`DELETE FROM appointments WHERE id=? AND patient_id=?`).bind(appointmentId,p.id).run()
+
+      await env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND NOT EXISTS (SELECT 1 FROM appointments WHERE availability_id=? AND status IN ('pending_payment','confirmed'))`).bind(availabilityId,availabilityId).run()
+    }
+
+    await audit(env,'patient',p.id,'appointment_history_cleared','patient',p.id,{deleted:appointments.length})
+    return json({ok:true,deleted:appointments.length})
+  }
+
   if(path==='/api/notifications'&&request.method==='GET'){const p=await patient(request,env);if(!p)return json({ok:false,message:'Faça login para continuar.'},401);const rows=await env.DB.prepare(`SELECT id,kind,message,created_at,read_at FROM patient_notifications WHERE patient_id=? AND channel='internal' ORDER BY created_at DESC LIMIT 50`).bind(p.id).all<any>();return json({ok:true,notifications:rows.results||[]})}
   if(path==='/api/appointments/mine'&&request.method==='GET'){const p=await patient(request,env);if(!p)return json({ok:false,message:'Faça login para continuar.'},401);await expireUnpaidReservations(env);const rows=await env.DB.prepare(`SELECT a.id,a.status,a.amount_cents,a.payment_method,a.reserved_until,a.paid_at,a.workflow_state,a.reservation_kind,a.payment_deadline_at,a.rescheduled_at,a.reschedule_reason,a.cancellation_reason,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? ORDER BY av.starts_at DESC`).bind(p.id).all<any>();return json({ok:true,appointments:rows.results||[]})}
 

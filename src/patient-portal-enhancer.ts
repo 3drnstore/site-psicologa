@@ -299,7 +299,24 @@ async function renderConsultas() {
       <h1 class="patient-page-title">Minhas consultas</h1>
       <section class="patient-panel"><div class="patient-panel-head"><strong>Próxima sessão</strong><small>Consultas confirmadas após pagamento</small></div>${future.length ? future.map(row).join('') : '<p class="patient-empty">Você não possui consulta futura confirmada.</p>'}</section>
       <section class="patient-panel"><div class="patient-panel-head"><strong>Histórico</strong><small>Sessões anteriores confirmadas</small></div>${history.length ? history.map(row).join('') : '<p class="patient-empty">Ainda não há sessões anteriores no seu histórico.</p>'}</section>
+      ${appointments.length ? '<section class="patient-panel patient-danger-zone"><h2>Limpeza temporária do histórico</h2><p>Esta ação remove do banco as consultas desta conta e os registros técnicos vinculados. O cadastro do paciente e eventuais anotações clínicas são preservados.</p><button type="button" class="patient-danger-button" data-clear-session-history>Remover meu histórico de sessões</button><div class="patient-action-message" data-clear-session-message></div></section>' : ''}
     </div>`
+
+    const cleanupButton=h.querySelector<HTMLButtonElement>('[data-clear-session-history]')
+    cleanupButton?.addEventListener('click',async()=>{
+      if(!window.confirm('Remover definitivamente todo o histórico de sessões desta conta? Esta ação não pode ser desfeita.'))return
+      cleanupButton.disabled=true
+      const message=h.querySelector<HTMLElement>('[data-clear-session-message]')
+      if(message)message.textContent='Removendo histórico...'
+      try{
+        const result=await request('/api/appointments/history',{method:'DELETE',body:'{}'})
+        window.alert(`Histórico removido. ${Number(result.deleted||0)} registro(s) de consulta foram apagados.`)
+        await renderConsultas()
+      }catch(error){
+        if(message)message.textContent=error instanceof Error?error.message:'Não foi possível remover o histórico.'
+        cleanupButton.disabled=false
+      }
+    })
   } catch (error) {
     h.innerHTML = `<div class="patient-view-error">${esc(error instanceof Error ? error.message : 'Não foi possível carregar suas consultas.')}</div>`
   }
