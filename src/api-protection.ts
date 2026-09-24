@@ -6,6 +6,7 @@ const EXTERNAL_WEBHOOKS=new Set([
   '/api/payments/webhook/infinitepay',
 ])
 const MAX_BODY_BYTES=64*1024
+const LARGE_UPLOAD_LIMITS=new Map<string,number>([['/api/admin/patient-manual',8*1024*1024+256*1024]])
 
 export function protectApiRequest(request:Request,path:string):Response|null{
   if(!path.startsWith('/api/'))return null
@@ -15,7 +16,8 @@ export function protectApiRequest(request:Request,path:string):Response|null{
   const lengthHeader=request.headers.get('content-length')
   if(lengthHeader){
     const length=Number(lengthHeader)
-    if(Number.isFinite(length)&&length>MAX_BODY_BYTES){
+    const maxBodyBytes=LARGE_UPLOAD_LIMITS.get(path)??MAX_BODY_BYTES
+    if(Number.isFinite(length)&&length>maxBodyBytes){
       return json({ok:false,message:'A solicitação enviada é maior do que o permitido.'},413)
     }
   }
