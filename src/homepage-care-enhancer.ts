@@ -1,16 +1,19 @@
 let installed = false
 let scheduled = false
 
-const HERO_COPY = 'Psicoterapia online em Terapia Cognitivo-Comportamental (TCC), com sessões individuais de 50 minutos, escuta cuidadosa, ética e respeito ao seu tempo.'
+const HERO_FIRST_PARAGRAPH = 'Atendimento psicológico individual com ética, acolhimento e respeito.'
+const HERO_SECOND_PARAGRAPH = 'Sessões exclusivamente online, com privacidade e segurança.'
 
 function ensureCareSections() {
   const shell = document.querySelector<HTMLElement>('.site-shell')
   const main = shell?.querySelector<HTMLElement>('main')
   if (!shell || !main) return
 
-  const heroParagraph = shell.querySelector<HTMLElement>('.hero .hero-copy > p')
-  if (heroParagraph && heroParagraph.textContent !== HERO_COPY) {
-    heroParagraph.textContent = HERO_COPY
+  const heroDescription = shell.querySelector<HTMLElement>('.hero .hero-description')
+  if (heroDescription) {
+    const paragraphs = [...heroDescription.querySelectorAll<HTMLParagraphElement>('p')]
+    if (paragraphs[0] && paragraphs[0].textContent !== HERO_FIRST_PARAGRAPH) paragraphs[0].textContent = HERO_FIRST_PARAGRAPH
+    if (paragraphs[1] && paragraphs[1].textContent !== HERO_SECOND_PARAGRAPH) paragraphs[1].textContent = HERO_SECOND_PARAGRAPH
   }
 
   const heroActions = shell.querySelector<HTMLElement>('.hero .hero-actions')
@@ -73,7 +76,6 @@ function ensureCareSections() {
     conversation.className = 'conversation-cta'
     conversation.innerHTML = `
       <div class="conversation-cta-inner">
-        <span class="section-kicker">Consultório de Psicologia</span>
         <h2>Vamos conversar</h2>
         <p>O primeiro passo para iniciar a psicoterapia é conversar. Vamos encontrar um momento em que possamos nos encontrar e conversar sobre o que está em sua mente.</p>
         <button type="button" class="primary-button large conversation-booking-button">Agendar consulta</button>

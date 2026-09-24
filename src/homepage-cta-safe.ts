@@ -9,7 +9,7 @@ function applyHomepageCta() {
   heroActions?.querySelector<HTMLButtonElement>('.primary-button')?.remove()
   const therapyLink = heroActions?.querySelector<HTMLAnchorElement>('.secondary-button')
   if (therapyLink) {
-    therapyLink.textContent = 'Como funciona a terapia'
+    therapyLink.textContent = 'Como funciona a psicoterapia'
     therapyLink.href = '#como-funciona'
   }
   shell.querySelector<HTMLElement>('.hero .trust-row')?.remove()
