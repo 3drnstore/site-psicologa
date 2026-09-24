@@ -60,12 +60,21 @@ export async function handlePatientManual(request:Request,env:Env,path:string):P
   if(!meta)return json({ok:false,message:'Manual ainda não disponibilizado.'},404)
   const chunks=await env.DB.prepare('SELECT data FROM patient_manual_chunks ORDER BY chunk_index').all<any>()
   if(!chunks.results?.length)return json({ok:false,message:'Manual indisponível.'},404)
-  const total=Number(meta.size_bytes)||chunks.results.reduce((n:number,r:any)=>n+(r.data?.byteLength||r.data?.length||0),0)
-  const out=new Uint8Array(total);let offset=0
-  for(const row of chunks.results){
-    const part=row.data instanceof ArrayBuffer?new Uint8Array(row.data):new Uint8Array(row.data)
-    out.set(part,offset);offset+=part.length
+  const decodeChunk=(value:any):Uint8Array=>{
+    if(value instanceof ArrayBuffer)return new Uint8Array(value)
+    if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength)
+    if(Array.isArray(value))return Uint8Array.from(value)
+    if(value&&typeof value==='object'){
+      const numeric=Object.keys(value).filter(k=>/^\\d+$/.test(k)).sort((a,b)=>Number(a)-Number(b))
+      if(numeric.length)return Uint8Array.from(numeric.map(k=>Number(value[k])))
+    }
+    throw new Error('Formato de dados do manual inválido.')
   }
+  const parts=chunks.results.map((row:any)=>decodeChunk(row.data))
+  const actualTotal=parts.reduce((n:number,part:Uint8Array)=>n+part.byteLength,0)
+  if(actualTotal<=0)return json({ok:false,message:'Manual indisponível.'},404)
+  const out=new Uint8Array(actualTotal);let offset=0
+  for(const part of parts){out.set(part,offset);offset+=part.byteLength}
   const safeName=String(meta.file_name||'Manual do Usuário.pdf').replace(/[\r\n"]/g,'')
   return new Response(out,{headers:{
     'content-type':'application/pdf',
