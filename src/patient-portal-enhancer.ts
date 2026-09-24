@@ -22,6 +22,12 @@ const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => 
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[char] || char))
 
+const formatCpf = (value: unknown) => {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 11)
+  if (digits.length !== 11) return digits
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+}
+
 const money = (cents: number) => new Intl.NumberFormat('pt-BR', {
   style: 'currency', currency: 'BRL',
 }).format((Number(cents) || 0) / 100)
@@ -328,7 +334,7 @@ async function renderDados() {
         <form class="patient-form" data-profile>
           <label>Nome completo<input name="full_name" value="${esc(patient.full_name)}" required></label>
           <label>Data de nascimento<input type="date" value="${esc(patient.birth_date)}" disabled aria-readonly="true"></label>
-          <label>CPF<input value="${esc(cpfLabel(patient.cpf))}" disabled aria-readonly="true"></label>
+          <label>CPF<input value="${esc(formatCpf(patient.cpf))}" disabled aria-readonly="true"></label>
           <label>Telefone<input name="phone" value="${esc(patient.phone)}" required></label>
           <label>E-mail<input value="${esc(patient.email)}" disabled aria-readonly="true"></label>
           <button type="submit">Salvar alterações</button>
