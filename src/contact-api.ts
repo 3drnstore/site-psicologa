@@ -25,6 +25,14 @@ export async function handleContactApi(request: Request, env: Env, path: string)
       const result=await env.DB.prepare(`SELECT id,name,email,phone,message,status,created_at FROM contact_messages ORDER BY CASE WHEN status='new' THEN 0 ELSE 1 END,created_at DESC LIMIT 250`).all<any>()
       return json({ok:true,messages:result.results||[]})
     }
+    if(request.method==='DELETE'){
+      const payload=await request.json().catch(()=>({})) as any
+      const id=Number(payload.id)
+      if(!Number.isInteger(id)||id<=0)return json({ok:false,message:'Mensagem inválida.'},400)
+      const result=await env.DB.prepare('DELETE FROM contact_messages WHERE id=?').bind(id).run()
+      if(!result.meta.changes)return json({ok:false,message:'Mensagem não encontrada.'},404)
+      return json({ok:true})
+    }
     if(request.method==='POST'){
       const payload=await request.json().catch(()=>({})) as any
       if(payload.admin_action!=='status')return json({ok:false,message:'Ação inválida.'},400)
