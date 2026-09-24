@@ -217,7 +217,7 @@ footer { max-width: 1320px; margin: 40px auto 0; border-top: 1px solid #d8ddd8; 
 
 @media (max-width: 760px) {
   .site-header { height: 76px; padding: 0 18px; }
-  .brand small { display: none; }
+  .brand small { display: block; }
   .hero { padding: 48px 22px 72px; min-height: auto; }
   .hero h1 { font-size: 44px; }
   .hero-copy > p, .hero-description { font-size: 16px; }
