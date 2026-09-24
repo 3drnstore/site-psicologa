@@ -33,6 +33,7 @@ import { runEmailNotificationTasks } from './email-notifications'
 import { handleHourlyPolicy, normalizeHourlyDeadlines } from './hour-policy'
 import { handleReceitaSaude } from './receita-saude'
 import { handleFinanceStatement } from './finance-statement'
+import { handlePatientManual } from './patient-manual-api'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -91,6 +92,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
   const adminSecurity = await handleAdminSecurity(request, env, path); if (adminSecurity) return adminSecurity
   const platformPricing = await handlePlatformPricing(request, env, path); if (platformPricing) return platformPricing
   const roleBlocked = await guardAdminRole(request, env, path); if (roleBlocked) return roleBlocked
+  const patientManual = await handlePatientManual(request, env, path); if (patientManual) return patientManual
 
   await touchRecurrence(request, env, path)
   const hourlyPolicy = await handleHourlyPolicy(request, env, path); if (hourlyPolicy) return hourlyPolicy
