@@ -30,23 +30,34 @@ jobs:
         run: |
           set -euo pipefail
           BASE_URL="https://site-psicologa.thiagodrn2.workers.dev"
-          HTML="$(curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL/?deploy=${GITHUB_SHA}")"
 
-          mapfile -t JS_ASSETS < <(printf '%s' "$HTML" | grep -oE '/assets/[^"'"'"']+\.js' | sort -u)
-
-          if [ "${#JS_ASSETS[@]}" -eq 0 ]; then
-            echo "No JavaScript assets found in production HTML."
+          EXPECTED_JS="$(grep -oE '/assets/[^"'"'"']+\.js' dist/index.html | head -n 1)"
+          if [ -z "$EXPECTED_JS" ]; then
+            echo "Expected JavaScript asset not found in local build."
             exit 1
           fi
 
+          HTML_FILE="$(mktemp)"
           BUNDLE_FILE="$(mktemp)"
-          ASSET_FILE="$(mktemp)"
-          trap 'rm -f "$BUNDLE_FILE" "$ASSET_FILE"' EXIT
+          trap 'rm -f "$HTML_FILE" "$BUNDLE_FILE"' EXIT
 
-          for ASSET in "${JS_ASSETS[@]}"; do
-            curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" -o "$ASSET_FILE"
-            cat "$ASSET_FILE" >> "$BUNDLE_FILE"
+          FOUND_CURRENT=0
+          for ATTEMPT in $(seq 1 20); do
+            curl -fsSL "$BASE_URL/?deploy=${GITHUB_SHA}&attempt=${ATTEMPT}" -o "$HTML_FILE"
+            if grep -Fq "$EXPECTED_JS" "$HTML_FILE"; then
+              FOUND_CURRENT=1
+              break
+            fi
+            echo "Waiting for current deployment to reach production (attempt $ATTEMPT/20)..."
+            sleep 2
           done
+
+          if [ "$FOUND_CURRENT" -ne 1 ]; then
+            echo "Production HTML did not switch to expected asset: $EXPECTED_JS"
+            exit 1
+          fi
+
+          curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$EXPECTED_JS" -o "$BUNDLE_FILE"
 
           REQUIRED_TEXTS=(
             "Atendimento psicológico individual com ética, acolhimento e respeito."
@@ -68,13 +79,15 @@ jobs:
           FORBIDDEN_TEXTS=(
             "Consultório de Psicologia"
             "Atendimento On-line"
+            "Limpeza temporária do histórico"
+            "Remover meu histórico de sessões"
           )
 
           for TEXT in "${FORBIDDEN_TEXTS[@]}"; do
             if grep -Fq "$TEXT" "$BUNDLE_FILE"; then
-              echo "Old production text is still present: $TEXT"
+              echo "Forbidden production text is still present: $TEXT"
               exit 1
             fi
           done
 
-          echo "Production verification passed for requested homepage copy."
+          echo "Production verification passed on the current deployed asset."
