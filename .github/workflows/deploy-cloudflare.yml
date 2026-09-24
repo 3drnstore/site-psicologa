@@ -40,8 +40,12 @@ jobs:
           fi
 
           FOUND=0
+          TMP_FILE="$(mktemp)"
+          trap 'rm -f "$TMP_FILE"' EXIT
+
           for ASSET in "${JS_ASSETS[@]}"; do
-            if curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" | grep -Fq "Atendimento psicológico individual com ética, acolhimento e respeito."; then
+            curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" -o "$TMP_FILE"
+            if grep -Fq "Atendimento psicológico individual com ética, acolhimento e respeito." "$TMP_FILE"; then
               FOUND=1
               break
             fi
