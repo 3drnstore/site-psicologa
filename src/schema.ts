@@ -36,5 +36,27 @@ CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_hash ON admin_sessions(token
   for(const [t,c,d] of columns)await addColumn(env,t,c,d)
   await env.DB.prepare('UPDATE patients SET portal_active=1 WHERE portal_active IS NULL').run()
   await env.DB.batch([['consultation_price_cents','0'],['pix_price_cents','0'],['card_price_cents','0'],['pix_discount_percent','0'],['timezone','America/Sao_Paulo'],['appointment_duration_minutes','50'],['hold_minutes','15']].map(([k,v])=>env.DB.prepare('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)').bind(k,v)))
+
+  // One-time production reset requested before launch: clear test financial history
+  // while preserving patients, appointments, clinical records, agenda and recurrence.
+  const financeResetKey='final_finance_reset_2026_09_24_v1'
+  const financeResetDone=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind(financeResetKey).first<any>()
+  if(!financeResetDone){
+    const receiptTable=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='receita_saude_receipts'").first<any>()
+    if(receiptTable)await env.DB.prepare('DELETE FROM receita_saude_receipts').run()
+
+    await env.DB.prepare('DELETE FROM payments').run()
+    await env.DB.prepare(`UPDATE appointments
+      SET amount_cents=0,
+          paid_at=NULL,
+          payment_method=NULL,
+          payment_provider=NULL,
+          payment_external_id=NULL,
+          confirmation_email_sent_at=NULL,
+          updated_at=CURRENT_TIMESTAMP`).run()
+
+    await env.DB.prepare('INSERT INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').bind(financeResetKey,'done').run()
+  }
+
   ready=true
 }
