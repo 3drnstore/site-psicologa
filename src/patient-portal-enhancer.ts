@@ -88,6 +88,28 @@ async function request(path: string, init?: RequestInit) {
   return data
 }
 
+async function downloadPatientManual(){
+  const { jsPDF } = await import('jspdf')
+  const pdf = new jsPDF({unit:'mm',format:'a4'})
+  const sections = [
+    ['Manual do Usuário - Portal do Paciente','Guia prático para agendamento, pagamento, acompanhamento de sessões e gerenciamento da conta.\n\nSetembro de 2026'],
+    ['1. Agenda','Nesta seção, você poderá efetuar o agendamento de sua sessão.\n\nEscolha o dia e o horário disponível e clique em Reservar horário. Para o primeiro atendimento, o portal cria uma reserva temporária de 15 minutos. Escolha Pagar com Pix ou Pagar com cartão.\n\nSe o pagamento não for efetuado em até 15 minutos, a sessão não será confirmada e o horário será liberado novamente para outro paciente.\n\nPaciente recorrente: após a recorrência ser definida pela profissional, o horário é reservado automaticamente e o pagamento deve ocorrer até 24 horas antes da sessão.'],
+    ['2. E-mails de reserva e confirmação','Você recebe um e-mail ao efetuar a reserva do primeiro atendimento ou quando a profissional estabelecer a recorrência.\n\nDepois de concluir o pagamento, você recebe um segundo e-mail confirmando a sessão.'],
+    ['3. Minhas sessões','Aqui você acompanha o histórico e a situação das próximas sessões.\n\nReservas que ainda aguardam confirmação exibem as ações disponíveis, incluindo pagamento quando aplicável. Após a confirmação, a situação da sessão passa a ser exibida como confirmada.'],
+    ['4. Meus dados','Nesta seção, você consulta seus dados cadastrais.\n\nApenas nome e número de telefone podem ser editados. Data de nascimento e CPF são informados no cadastro do primeiro acesso e ficam bloqueados para edição posterior.\n\nConfira nome, data de nascimento, CPF, telefone e e-mail. Altere nome e/ou telefone quando necessário e clique em Salvar alterações.'],
+    ['5. Segurança','Nesta seção, você pode alterar e-mail, senha e solicitar a exclusão da conta.\n\nPara alterar o e-mail, informe o novo e-mail e a senha atual. Para alterar a senha, informe a senha atual, a nova senha e a confirmação. Use Excluir conta somente quando realmente desejar encerrar a conta.'],
+    ['6. Resumo rápido','Primeiro atendimento: escolha o horário na Agenda, reserve e pague em até 15 minutos.\n\nConfirmação: a sessão é confirmada somente após o pagamento.\n\nPaciente recorrente: o horário é reservado automaticamente e o pagamento deve ocorrer até 24 horas antes da sessão.\n\nE-mails: um e-mail informa a reserva e outro informa a confirmação após o pagamento.\n\nMinhas sessões: acompanhe reservas, confirmações e histórico.\n\nMeus dados: nome e telefone podem ser editados; data de nascimento e CPF ficam bloqueados.\n\nSegurança: permite alterar e-mail, senha e solicitar exclusão da conta.']
+  ]
+  sections.forEach(([title,body],index)=>{
+    if(index>0)pdf.addPage()
+    pdf.setFont('helvetica','bold');pdf.setFontSize(index===0?22:18);pdf.text(title,18,25)
+    pdf.setFont('helvetica','normal');pdf.setFontSize(11)
+    pdf.text(pdf.splitTextToSize(body,174),18,40)
+    pdf.setFontSize(8);pdf.text('Manual do Usuário - Portal do Paciente',105,290,{align:'center'})
+  })
+  pdf.save('Manual Portal do Paciente.pdf')
+}
+
 function currentTab(): PatientTab {
   const value = localStorage.getItem('patientPortalTab') as PatientTab | null
   return value && ['agenda', 'consultas', 'dados', 'seguranca'].includes(value) ? value : 'agenda'
@@ -120,6 +142,7 @@ function sidebar() {
         <button type="button" data-patient-tab="consultas">Minhas consultas</button>
         <button type="button" data-patient-tab="dados">Meus dados</button>
         <button type="button" data-patient-tab="seguranca">Segurança</button>
+        <button type="button" data-patient-manual>Manual do Usuário</button>
       </nav>
       <div class="patient-sidebar-bottom">
         <button type="button" class="patient-logout" data-patient-logout>Sair</button>
@@ -487,6 +510,13 @@ export function installPatientPortalEnhancer() {
 
   document.addEventListener('click', event => {
     const target = event.target as HTMLElement | null
+    const manualButton = target?.closest<HTMLButtonElement>('.patient-sidebar[data-native-safe="1"] [data-patient-manual]')
+    if (manualButton) {
+      event.preventDefault()
+      manualButton.disabled = true
+      void downloadPatientManual().catch(()=>alert('Não foi possível baixar o manual.')).finally(()=>{manualButton.disabled=false})
+      return
+    }
     const tabButton = target?.closest<HTMLButtonElement>('.patient-sidebar[data-native-safe="1"] [data-patient-tab]')
     if (tabButton) {
       event.preventDefault()
