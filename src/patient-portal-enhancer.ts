@@ -327,9 +327,10 @@ async function renderDados() {
       <section class="patient-panel">
         <form class="patient-form" data-profile>
           <label>Nome completo<input name="full_name" value="${esc(patient.full_name)}" required></label>
-          <label>Data de nascimento<input name="birth_date" type="date" value="${esc(patient.birth_date)}" required></label>
+          <label>Data de nascimento<input type="date" value="${esc(patient.birth_date)}" disabled aria-readonly="true"></label>
+          <label>CPF<input value="${esc(cpfLabel(patient.cpf))}" disabled aria-readonly="true"></label>
           <label>Telefone<input name="phone" value="${esc(patient.phone)}" required></label>
-          <label>E-mail<input value="${esc(patient.email)}" disabled></label>
+          <label>E-mail<input value="${esc(patient.email)}" disabled aria-readonly="true"></label>
           <button type="submit">Salvar alterações</button>
           <div class="patient-action-message"></div>
         </form>
@@ -355,7 +356,6 @@ async function renderDados() {
           method: 'PATCH',
           body: JSON.stringify({
             full_name: String(formData.get('full_name') || ''),
-            birth_date: String(formData.get('birth_date') || ''),
             phone: String(formData.get('phone') || ''),
           }),
         })
