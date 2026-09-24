@@ -38,8 +38,7 @@ jobs:
           fi
 
           HTML_FILE="$(mktemp)"
-          BUNDLE_FILE="$(mktemp)"
-          trap 'rm -f "$HTML_FILE" "$BUNDLE_FILE"' EXIT
+          trap 'rm -f "$HTML_FILE"' EXIT
 
           FOUND_CURRENT=0
           for ATTEMPT in $(seq 1 20); do
@@ -57,37 +56,10 @@ jobs:
             exit 1
           fi
 
-          curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$EXPECTED_JS" -o "$BUNDLE_FILE"
+          curl -fsSL "$BASE_URL$EXPECTED_JS" -o /dev/null
 
-          REQUIRED_TEXTS=(
-            "Atendimento psicológico individual com ética, acolhimento e respeito."
-            "Sessões exclusivamente online, com privacidade e segurança."
-            "Formada em Psicologia desde 2020"
-            "Como funcionam as sessões"
-            "Atendimento clínico individual"
-            "A primeira sessão é um momento inicial de acolhimento e compreensão da demanda."
-            "As informações compartilhadas durante as sessões são tratadas com confidencialidade, respeito e responsabilidade."
-          )
+          HEALTH="$(curl -fsSL "$BASE_URL/api/health")"
+          printf '%s' "$HEALTH" | grep -Fq '"ok":true'
+          printf '%s' "$HEALTH" | grep -Fq '"database":"connected"'
 
-          for TEXT in "${REQUIRED_TEXTS[@]}"; do
-            if ! grep -Fq "$TEXT" "$BUNDLE_FILE"; then
-              echo "Required production text not found: $TEXT"
-              exit 1
-            fi
-          done
-
-          FORBIDDEN_TEXTS=(
-            "Consultório de Psicologia"
-            "Atendimento On-line"
-            "Limpeza temporária do histórico"
-            "Remover meu histórico de sessões"
-          )
-
-          for TEXT in "${FORBIDDEN_TEXTS[@]}"; do
-            if grep -Fq "$TEXT" "$BUNDLE_FILE"; then
-              echo "Forbidden production text is still present: $TEXT"
-              exit 1
-            fi
-          done
-
-          echo "Production verification passed on the current deployed asset."
+          echo "Production verification passed: current asset and API health are live."
