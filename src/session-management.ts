@@ -62,15 +62,73 @@ async function moveAppointment(env:Env,appointment:any,newSlotId:number,actorTyp
   await syncCalendarEvent(env,Number(appointment.id),'upsert');await audit(env,actorType,actorId,'appointment_rescheduled','appointment',appointment.id,{from:oldSlot?.starts_at,to:newSlot.starts_at,reason});return{oldSlot,newSlot}
 }
 
+async function recurrenceDurationMinutes(env:Env){
+  const row=await env.DB.prepare(\`SELECT value FROM settings WHERE key='appointment_duration_minutes'\`).first<any>()
+  return Math.max(1,Number(row?.value||50)||50)
+}
+function recurrenceParts(value:string){
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(value))
+  const weekdayMap:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}
+  return{weekday:weekdayMap[parts.find(x=>x.type==='weekday')?.value||'Mon'],time:\`\${parts.find(x=>x.type==='hour')?.value||'00'}:\${parts.find(x=>x.type==='minute')?.value||'00'}\`}
+}
+function manualRecurrenceStart(date:string,time:string){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time))return null
+  const value=new Date(\`\${date}T\${time}:00\${SAO_PAULO_OFFSET}\`)
+  return Number.isNaN(value.getTime())?null:value.toISOString()
+}
+async function recurrenceAmountCents(env:Env,patientId:number){
+  const previous=await env.DB.prepare(\`SELECT a.amount_cents FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? AND a.status='confirmed' ORDER BY av.starts_at DESC LIMIT 1\`).bind(patientId).first<any>()
+  if(Number(previous?.amount_cents)>0)return Number(previous.amount_cents)
+  const settings=await env.DB.prepare(\`SELECT key,value FROM settings WHERE key IN ('card_price_cents','consultation_price_cents')\`).all<any>()
+  const map=Object.fromEntries((settings.results||[]).map((row:any)=>[row.key,row.value]))
+  return Number(map.card_price_cents||map.consultation_price_cents||0)
+}
+async function createManualSlot(env:Env,startsAt:string,endsAt:string,status:'free'|'held'){
+  const exact=await env.DB.prepare(\`SELECT id,status FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1\`).bind(startsAt,endsAt).first<any>()
+  if(exact){
+    if(String(exact.status)!=='free')throw new Error('O horário informado já está ocupado ou bloqueado.')
+    const changed=await env.DB.prepare(\`UPDATE availability SET status=?,public_visibility='visible',source='recurring_patient',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'\`).bind(status,exact.id).run()
+    if(!Number(changed.meta.changes||0))throw new Error('O horário acabou de ser ocupado.')
+    return Number(exact.id)
+  }
+  const overlap=await env.DB.prepare(\`SELECT id,status FROM availability WHERE starts_at<? AND ends_at>? LIMIT 1\`).bind(endsAt,startsAt).first<any>()
+  if(overlap)throw new Error('O horário informado conflita com outro compromisso da agenda.')
+  const inserted=await env.DB.prepare(\`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,?,'visible','recurring_patient')\`).bind(startsAt,endsAt,status).run()
+  return Number(inserted.meta.last_row_id)
+}
+async function reserveRecurringAt(env:Env,patientId:number,startsAt:string,ruleId:string,parentAppointmentId:number|null){
+  const duration=await recurrenceDurationMinutes(env)
+  const endsAt=new Date(new Date(startsAt).getTime()+duration*60000).toISOString()
+  const existing=await env.DB.prepare(\`SELECT a.id,a.availability_id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? AND a.status='pending_payment' AND a.reservation_kind='recurring' AND av.starts_at>? ORDER BY av.starts_at LIMIT 1\`).bind(patientId,nowIso()).first<any>()
+  if(existing&&Math.abs(new Date(existing.starts_at).getTime()-new Date(startsAt).getTime())<60000)return Number(existing.id)
+  const slotId=await createManualSlot(env,startsAt,endsAt,'held')
+  const deadline=paymentDeadlineTwoDaysBefore(startsAt)
+  if(existing){
+    await env.DB.prepare(\`UPDATE availability SET status='free',source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='held'\`).bind(existing.availability_id).run()
+    await env.DB.prepare(\`UPDATE appointments SET availability_id=?,reserved_until=?,payment_deadline_at=?,workflow_state='recurring_reserved',recurrence_rule_id=?,recurrence_parent_appointment_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?\`).bind(slotId,deadline,deadline,ruleId,parentAppointmentId,existing.id).run()
+    await audit(env,'system',null,'recurring_reservation_moved','appointment',existing.id,{starts_at:startsAt})
+    return Number(existing.id)
+  }
+  const amount=await recurrenceAmountCents(env,patientId)
+  const inserted=await env.DB.prepare(\`INSERT INTO appointments(patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state,recurrence_rule_id,recurrence_parent_appointment_id) VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)\`).bind(patientId,slotId,amount,deadline,deadline,'recurring','recurring_reserved',ruleId,parentAppointmentId).run()
+  const id=Number(inserted.meta.last_row_id)
+  await audit(env,'system',null,'recurring_reservation_created','appointment',id,{starts_at:startsAt})
+  return id
+}
+
 export async function ensureNextRecurringReservation(env:Env,confirmedAppointmentId:number){
-  const current=await env.DB.prepare(`SELECT a.*,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.status='confirmed'`).bind(confirmedAppointmentId).first<any>();if(!current)return null
-  const rule=await env.DB.prepare(`SELECT * FROM patient_recurrence WHERE patient_id=? AND active=1`).bind(current.patient_id).first<any>();if(!rule)return null
-  const existing=await env.DB.prepare(`SELECT id FROM appointments WHERE recurrence_parent_appointment_id=? LIMIT 1`).bind(confirmedAppointmentId).first<any>();if(existing)return existing.id
-  const days=Number(rule.cadence_days)===14?14:7,startsAt=plusDaysIso(current.starts_at,days),endsAt=plusDaysIso(current.ends_at,days);let slot=await env.DB.prepare(`SELECT * FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1`).bind(startsAt,endsAt).first<any>()
-  if(slot&&slot.status!=='free'){await audit(env,'system',null,'recurrence_conflict','patient',current.patient_id,{starts_at:startsAt});return null}
-  if(!slot){const inserted=await env.DB.prepare(`INSERT INTO availability(starts_at,ends_at,status,public_visibility,source) VALUES(?,?,'held','visible','recurring_patient')`).bind(startsAt,endsAt).run();slot={id:Number(inserted.meta.last_row_id),starts_at:startsAt,ends_at:endsAt,status:'held'}}else{const claim=await env.DB.prepare(`UPDATE availability SET status='held',source='recurring_patient',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='free'`).bind(slot.id).run();if(!claim.meta.changes)return null}
-  const deadline=paymentDeadlineTwoDaysBefore(startsAt),inserted=await env.DB.prepare(`INSERT INTO appointments(patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state,recurrence_rule_id,recurrence_parent_appointment_id) VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(current.patient_id,slot.id,current.amount_cents,deadline,deadline,'recurring','recurring_reserved',rule.id,confirmedAppointmentId).run(),id=Number(inserted.meta.last_row_id)
-  await audit(env,'system',null,'recurring_reservation_created','appointment',id,{starts_at:startsAt,deadline});return id
+  const current=await env.DB.prepare(\`SELECT a.*,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.status='confirmed'\`).bind(confirmedAppointmentId).first<any>()
+  if(!current)return null
+  const rule=await env.DB.prepare(\`SELECT * FROM patient_recurrence WHERE patient_id=? AND active=1\`).bind(current.patient_id).first<any>()
+  if(!rule)return null
+
+  const future=await env.DB.prepare(\`SELECT a.id FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? AND a.status IN ('pending_payment','confirmed') AND av.starts_at>? ORDER BY av.starts_at LIMIT 1\`).bind(current.patient_id,nowIso()).first<any>()
+  if(future)return Number(future.id)
+
+  const days=Number(rule.cadence_days)===14?14:7
+  let startsAt=plusDaysIso(current.starts_at,days)
+  while(new Date(startsAt).getTime()<=Date.now())startsAt=plusDaysIso(startsAt,days)
+  return reserveRecurringAt(env,Number(current.patient_id),startsAt,String(rule.id),Number(current.id))
 }
 export async function afterAppointmentConfirmed(env:Env,appointmentId:number){await ensureNextRecurringReservation(env,appointmentId)}
 
@@ -118,6 +176,71 @@ export async function handleSessionManagement(request:Request,env:Env,path:strin
   if(path==='/api/admin/agenda/cancel-day'&&request.method==='POST'){const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401);const data=await request.json().catch(()=>({}))as any,date=String(data.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return json({ok:false,message:'Informe uma data válida.'},400);const from=new Date(`${date}T00:00:00${SAO_PAULO_OFFSET}`).toISOString(),to=new Date(`${date}T23:59:59${SAO_PAULO_OFFSET}`).toISOString(),rows=await env.DB.prepare(`SELECT ap.id,ap.patient_id,ap.availability_id,av.starts_at FROM appointments ap JOIN availability av ON av.id=ap.availability_id WHERE ap.status='confirmed' AND av.starts_at>=? AND av.starts_at<=?`).bind(from,to).all<any>(),affected=rows.results||[];await env.DB.prepare(`UPDATE availability SET status='blocked',source='professional_cancelled_day',updated_at=CURRENT_TIMESTAMP WHERE starts_at>=? AND starts_at<=?`).bind(from,to).run();for(const row of affected){await env.DB.prepare(`UPDATE appointments SET workflow_state='awaiting_reschedule',cancellation_reason=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(String(data.reason||'').trim()||null,row.id).run();await env.DB.prepare(`INSERT INTO appointment_changes(id,appointment_id,actor_type,actor_id,change_type,old_starts_at,reason) VALUES(?,?,?,?,'professional_day_cancelled',?,?)`).bind(crypto.randomUUID(),row.id,'admin',String(a.id),row.starts_at,String(data.reason||'').trim()||null).run();await syncCalendarEvent(env,row.id,'remove');await queueNotification(env,row.patient_id,row.id,'professional_cancelled',`A agenda de ${ptDate(row.starts_at)} precisou ser cancelada pela profissional.${data.reason?` Motivo: ${String(data.reason).trim()}.`:''} Seu pagamento continua válido e entraremos em contato para reagendar.`,[ptDate(row.starts_at),ptTime(row.starts_at),String(data.reason||'')],`cancel-day:${row.id}:${date}`)}await audit(env,'admin',a.id,'agenda_day_cancelled','agenda',date,{reason:data.reason||null,affected:affected.length});return json({ok:true,affected:affected.length})}
 
   const recurrence=path.match(/^\/api\/admin\/patients\/(\d+)\/recurrence$/)
-  if(recurrence){const a=await admin(request,env);if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401);const patientId=Number(recurrence[1]);if(request.method==='GET'){const rule=await env.DB.prepare(`SELECT * FROM patient_recurrence WHERE patient_id=?`).bind(patientId).first<any>();return json({ok:true,recurrence:rule||null})}if(request.method==='DELETE'){await env.DB.prepare(`UPDATE patient_recurrence SET active=0,updated_at=CURRENT_TIMESTAMP WHERE patient_id=?`).bind(patientId).run();return json({ok:true})}if(request.method==='PUT'){const data=await request.json().catch(()=>({}))as any,cadence=Number(data.cadence_days)===14?14:7,sourceId=Number(data.source_appointment_id),source=await env.DB.prepare(`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=? AND a.status='confirmed'`).bind(sourceId,patientId).first<any>();if(!source)return json({ok:false,message:'Escolha uma sessão confirmada deste paciente como referência.'},409);const local=new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(source.starts_at)),weekdayMap:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6},wd=weekdayMap[local.find(x=>x.type==='weekday')?.value||'Mon'],hh=local.find(x=>x.type==='hour')?.value||'00',mm=local.find(x=>x.type==='minute')?.value||'00',id=crypto.randomUUID();await env.DB.prepare(`INSERT INTO patient_recurrence(id,patient_id,cadence_days,weekday,start_time,active,source_appointment_id) VALUES(?,?,?,?,?,1,?) ON CONFLICT(patient_id) DO UPDATE SET cadence_days=excluded.cadence_days,weekday=excluded.weekday,start_time=excluded.start_time,active=1,source_appointment_id=excluded.source_appointment_id,updated_at=CURRENT_TIMESTAMP`).bind(id,patientId,cadence,wd,`${hh}:${mm}`,sourceId).run();await ensureNextRecurringReservation(env,sourceId);return json({ok:true,cadence_days:cadence})}}
+  if(recurrence){
+    const a=await admin(request,env)
+    if(!a)return json({ok:false,message:'Acesso profissional necessário.'},401)
+    const patientId=Number(recurrence[1])
+
+    if(request.method==='GET'){
+      const rule=await env.DB.prepare(\`SELECT * FROM patient_recurrence WHERE patient_id=?\`).bind(patientId).first<any>()
+      return json({ok:true,recurrence:rule||null})
+    }
+    if(request.method==='DELETE'){
+      await env.DB.prepare(\`UPDATE patient_recurrence SET active=0,updated_at=CURRENT_TIMESTAMP WHERE patient_id=?\`).bind(patientId).run()
+      return json({ok:true})
+    }
+    if(request.method==='PUT'){
+      const data=await request.json().catch(()=>({}))as any
+      const cadence=Number(data.cadence_days)===14?14:7
+      const mode=String(data.reference_mode||'session')
+      const id=crypto.randomUUID()
+
+      if(mode==='manual'){
+        const startsAt=manualRecurrenceStart(String(data.manual_date||''),String(data.manual_time||''))
+        if(!startsAt)return json({ok:false,message:'Informe uma data e um horário válidos.'},400)
+        if(new Date(startsAt).getTime()<=Date.now())return json({ok:false,message:'A data e o horário precisam estar no futuro.'},400)
+
+        const parts=recurrenceParts(startsAt)
+        const duration=await recurrenceDurationMinutes(env)
+        const endsAt=new Date(new Date(startsAt).getTime()+duration*60000).toISOString()
+        const awaiting=await env.DB.prepare(\`SELECT a.*,av.starts_at,av.ends_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.patient_id=? AND a.status='confirmed' AND a.workflow_state='awaiting_reschedule' ORDER BY av.starts_at LIMIT 1\`).bind(patientId).first<any>()
+
+        if(!awaiting){
+          const exact=await env.DB.prepare(\`SELECT id,status FROM availability WHERE starts_at=? AND ends_at=? LIMIT 1\`).bind(startsAt,endsAt).first<any>()
+          if(exact&&String(exact.status)!=='free')return json({ok:false,message:'O horário informado já está ocupado ou bloqueado.'},409)
+          const overlap=await env.DB.prepare(\`SELECT id FROM availability WHERE starts_at<? AND ends_at>? AND NOT(starts_at=? AND ends_at=?) LIMIT 1\`).bind(endsAt,startsAt,startsAt,endsAt).first<any>()
+          if(overlap)return json({ok:false,message:'O horário informado conflita com outro compromisso da agenda.'},409)
+        }
+
+        await env.DB.prepare(\`INSERT INTO patient_recurrence(id,patient_id,cadence_days,weekday,start_time,active,source_appointment_id,manual_reference_at) VALUES(?,?,?,?,?,1,NULL,?) ON CONFLICT(patient_id) DO UPDATE SET cadence_days=excluded.cadence_days,weekday=excluded.weekday,start_time=excluded.start_time,active=1,source_appointment_id=NULL,manual_reference_at=excluded.manual_reference_at,updated_at=CURRENT_TIMESTAMP\`).bind(id,patientId,cadence,parts.weekday,parts.time,startsAt).run()
+        const rule=await env.DB.prepare(\`SELECT id FROM patient_recurrence WHERE patient_id=?\`).bind(patientId).first<any>()
+        const ruleId=String(rule?.id||id)
+
+        if(awaiting){
+          if(Math.abs(new Date(awaiting.starts_at).getTime()-new Date(startsAt).getTime())>=60000){
+            const targetSlotId=await createManualSlot(env,startsAt,endsAt,'free')
+            const moved=await moveAppointment(env,awaiting,targetSlotId,'admin',a.id,'Reagendamento definido manualmente na recorrência')
+            await queueNotification(env,patientId,Number(awaiting.id),'rescheduled',\`Sua sessão foi reagendada pela profissional para \${ptDate(moved.newSlot.starts_at)} às \${ptTime(moved.newSlot.starts_at)}.\`,[ptDate(moved.newSlot.starts_at),ptTime(moved.newSlot.starts_at),''],\`recurrence-manual-reschedule:\${awaiting.id}:\${moved.newSlot.starts_at}\`)
+          }
+          await audit(env,'admin',a.id,'recurrence_manual_reschedule','patient',patientId,{starts_at:startsAt,cadence_days:cadence})
+          return json({ok:true,cadence_days:cadence,action:'rescheduled'})
+        }
+
+        await reserveRecurringAt(env,patientId,startsAt,ruleId,null)
+        await audit(env,'admin',a.id,'recurrence_manual_set','patient',patientId,{starts_at:startsAt,cadence_days:cadence})
+        return json({ok:true,cadence_days:cadence,action:'reserved'})
+      }
+
+      const sourceId=Number(data.source_appointment_id)
+      const source=await env.DB.prepare(\`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.id=? AND a.patient_id=? AND a.status='confirmed'\`).bind(sourceId,patientId).first<any>()
+      if(!source)return json({ok:false,message:'Escolha uma sessão confirmada deste paciente como referência.'},409)
+      const parts=recurrenceParts(source.starts_at)
+      await env.DB.prepare(\`INSERT INTO patient_recurrence(id,patient_id,cadence_days,weekday,start_time,active,source_appointment_id,manual_reference_at) VALUES(?,?,?,?,?,1,?,NULL) ON CONFLICT(patient_id) DO UPDATE SET cadence_days=excluded.cadence_days,weekday=excluded.weekday,start_time=excluded.start_time,active=1,source_appointment_id=excluded.source_appointment_id,manual_reference_at=NULL,updated_at=CURRENT_TIMESTAMP\`).bind(id,patientId,cadence,parts.weekday,parts.time,sourceId).run()
+      await ensureNextRecurringReservation(env,sourceId)
+      await audit(env,'admin',a.id,'recurrence_session_reference_set','patient',patientId,{source_appointment_id:sourceId,cadence_days:cadence})
+      return json({ok:true,cadence_days:cadence,action:'reference'})
+    }
+  }
+
   return null
 }
