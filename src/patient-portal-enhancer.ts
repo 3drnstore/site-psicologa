@@ -116,11 +116,12 @@ function sidebar() {
     element.className = 'patient-sidebar'
     element.dataset.nativeSafe = '1'
     element.innerHTML = `
-      <div class="patient-sidebar-brand">
+      <button type="button" class="patient-sidebar-brand" data-patient-menu-toggle aria-expanded="false" aria-label="Abrir menu do paciente">
         <span>Minha área</span>
         <strong>Portal do paciente</strong>
         <div class="patient-sidebar-welcome"></div>
-      </div>
+      </button>
+      <div class="patient-sidebar-menu">
       <nav>
         <button type="button" data-patient-tab="agenda">Agenda</button>
         <button type="button" data-patient-tab="consultas">Minhas consultas</button>
@@ -131,6 +132,7 @@ function sidebar() {
       <div class="patient-sidebar-bottom">
         <button type="button" class="patient-logout" data-patient-logout>Sair</button>
         <small>Seus dados são privados e protegidos.</small>
+      </div>
       </div>`
     document.body.appendChild(element)
   }
@@ -148,6 +150,11 @@ function setActive(tab: PatientTab) {
     button.classList.toggle('active', button.dataset.patientTab === tab)
   })
   localStorage.setItem('patientPortalTab', tab)
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    const side = sidebar()
+    side.classList.remove('menu-open')
+    side.querySelector<HTMLButtonElement>('[data-patient-menu-toggle]')?.setAttribute('aria-expanded','false')
+  }
 }
 
 function selectedSlotData() {
@@ -494,6 +501,14 @@ export function installPatientPortalEnhancer() {
 
   document.addEventListener('click', event => {
     const target = event.target as HTMLElement | null
+    const menuToggle = target?.closest<HTMLButtonElement>('.patient-sidebar[data-native-safe="1"] [data-patient-menu-toggle]')
+    if (menuToggle) {
+      const side = sidebar()
+      const open = side.classList.toggle('menu-open')
+      menuToggle.setAttribute('aria-expanded', String(open))
+      menuToggle.setAttribute('aria-label', open ? 'Fechar menu do paciente' : 'Abrir menu do paciente')
+      return
+    }
     const manualButton = target?.closest<HTMLButtonElement>('.patient-sidebar[data-native-safe="1"] [data-patient-manual]')
     if (manualButton) {
       event.preventDefault()
