@@ -24,3 +24,32 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify published site
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://site-psicologa.thiagodrn2.workers.dev"
+          HTML="$(curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL/?deploy=${GITHUB_SHA}")"
+
+          mapfile -t JS_ASSETS < <(printf '%s' "$HTML" | grep -oE '/assets/[^"'"'"']+\.js' | sort -u)
+
+          if [ "${#JS_ASSETS[@]}" -eq 0 ]; then
+            echo "No JavaScript assets found in production HTML."
+            exit 1
+          fi
+
+          FOUND=0
+          for ASSET in "${JS_ASSETS[@]}"; do
+            if curl -fsSL --retry 5 --retry-delay 2 "$BASE_URL$ASSET" | grep -Fq "Atendimento psicológico individual com ética, acolhimento e respeito."; then
+              FOUND=1
+              break
+            fi
+          done
+
+          if [ "$FOUND" -ne 1 ]; then
+            echo "Updated hero text was not found in the production bundle."
+            exit 1
+          fi
+
+          echo "Production verification passed: updated hero text found."
