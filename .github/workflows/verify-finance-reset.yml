@@ -1,0 +1,24 @@
+name: Verify finance reset
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/verify-finance-reset.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Verify production D1 finance is empty
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler d1 execute site-psicologa-db --remote --yes --command "SELECT COUNT(*) AS payments_count FROM payments; SELECT COUNT(*) AS paid_appointments_count FROM appointments WHERE paid_at IS NOT NULL; SELECT COUNT(*) AS financial_appointments_count FROM appointments WHERE amount_cents<>0 OR payment_method IS NOT NULL OR payment_provider IS NOT NULL OR payment_external_id IS NOT NULL;"
