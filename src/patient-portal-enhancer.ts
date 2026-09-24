@@ -89,15 +89,14 @@ async function request(path: string, init?: RequestInit) {
 }
 
 async function downloadPatientManual(){
-  const manualHtml = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Manual do Usuário - Portal do Paciente</title><style>body{font-family:Arial,sans-serif;max-width:780px;margin:40px auto;padding:0 24px;color:#243d37;line-height:1.55}h1,h2{font-family:Georgia,serif}h2{margin-top:34px}small{color:#687873}@media print{body{margin:0 auto}h2{break-before:page}}</style></head><body><h1>Manual do Usuário - Portal do Paciente</h1><p>Guia prático para agendamento, pagamento, acompanhamento de sessões e gerenciamento da conta.</p><h2>1. Agenda</h2><p>Escolha o dia e o horário disponível e clique em Reservar horário. No primeiro atendimento, a reserva fica disponível por 15 minutos para conclusão do pagamento. Sem pagamento nesse prazo, o horário é liberado novamente.</p><p>Para paciente recorrente, o horário é reservado automaticamente conforme a recorrência definida pela profissional, com pagamento até 24 horas antes da sessão.</p><h2>2. E-mails de reserva e confirmação</h2><p>Você recebe um e-mail ao efetuar a reserva e outro após a confirmação do pagamento.</p><h2>3. Minhas sessões</h2><p>Acompanhe reservas, sessões confirmadas e o histórico de atendimentos.</p><h2>4. Meus dados</h2><p>Nome e telefone podem ser alterados. Data de nascimento e CPF ficam bloqueados para edição após o cadastro.</p><h2>5. Segurança</h2><p>Permite alterar e-mail, senha e solicitar a exclusão da conta.</p><p><small>Psicóloga Jacqueline Siqueira - Portal do Paciente</small></p></body></html>`
-  const blob = new Blob([manualHtml],{type:'text/html;charset=utf-8'})
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = 'Manual do Usuário - Portal do Paciente.html'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
+  const response=await fetch('/api/patient/manual',{credentials:'include',cache:'no-store'})
+  if(!response.ok){const data=await response.json().catch(()=>({})) as any;throw new Error(data.message||'Manual indisponível.')}
+  const blob=await response.blob()
+  const disposition=response.headers.get('content-disposition')||''
+  const utf=disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  const name=utf?decodeURIComponent(utf[1]):'Manual do Usuário - Portal do Paciente.pdf'
+  const url=URL.createObjectURL(blob),anchor=document.createElement('a')
+  anchor.href=url;anchor.download=name;document.body.appendChild(anchor);anchor.click();anchor.remove()
   window.setTimeout(()=>URL.revokeObjectURL(url),30000)
 }
 
@@ -505,7 +504,7 @@ export function installPatientPortalEnhancer() {
     if (manualButton) {
       event.preventDefault()
       manualButton.disabled = true
-      void downloadPatientManual().catch(()=>alert('Não foi possível baixar o manual.')).finally(()=>{manualButton.disabled=false})
+      void downloadPatientManual().catch((error)=>alert(error instanceof Error?error.message:'Não foi possível baixar o manual.')).finally(()=>{manualButton.disabled=false})
       return
     }
     const tabButton = target?.closest<HTMLButtonElement>('.patient-sidebar[data-native-safe="1"] [data-patient-tab]')
