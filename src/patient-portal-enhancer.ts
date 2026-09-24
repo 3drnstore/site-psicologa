@@ -89,9 +89,7 @@ async function request(path: string, init?: RequestInit) {
 }
 
 async function downloadPatientManual(){
-  const response=await fetch('/api/patient/manual',{method:'HEAD',credentials:'include',cache:'no-store'})
-  if(!response.ok){const check=await fetch('/api/patient/manual',{credentials:'include',cache:'no-store'});const data=await check.json().catch(()=>({})) as any;throw new Error(data.message||'Manual indisponível.')}
-  window.location.assign('/api/patient/manual?download=1')
+  window.location.href='/api/patient/manual?download=1'
 }
 
 function currentTab(): PatientTab {
