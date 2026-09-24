@@ -8,7 +8,7 @@ const timeLabel=(v:string)=>new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minu
 const MAX_EMAIL_ATTEMPTS=4
 
 function subjectFor(kind:string){
-  const map:Record<string,string>={reservation_created:'Reserva de consulta realizada',recurring_created:'Sua próxima consulta foi reservada',payment_reminder:'Lembrete de pagamento da próxima consulta',payment_final:'Prazo de pagamento da consulta',payment_reminder_48h:'Lembrete de pagamento da consulta',reservation_expired:'Reserva de consulta expirada',rescheduled:'Consulta remarcada',professional_cancelled:'Alteração necessária na sua consulta',appointment_reminder:'Lembrete da sua consulta',appointment_reminder_24h:'Lembrete da sua consulta'}
+  const map:Record<string,string>={reservation_created:'Reserva de consulta realizada',recurring_created:'Sua próxima consulta foi reservada',payment_reminder:'Lembrete de pagamento da próxima consulta',payment_final:'Prazo de pagamento da consulta',reservation_expired:'Reserva de consulta expirada',rescheduled:'Consulta remarcada',professional_cancelled:'Alteração necessária na sua consulta',appointment_reminder:'Lembrete da sua consulta',appointment_reminder_24h:'Lembrete da sua consulta'}
   return map[kind]||'Atualização sobre sua consulta'
 }
 function nextRetryAt(attemptCount:number){const delaysMinutes=[15,60,360],delay=delaysMinutes[Math.min(Math.max(attemptCount-1,0),delaysMinutes.length-1)];return new Date(Date.now()+delay*60000).toISOString()}
@@ -35,21 +35,6 @@ export async function sendReservationCreatedEmail(env:Env,appointmentId:number){
 async function mirrorInternalNotifications(env:Env){const rows=await env.DB.prepare(`SELECT n.id,n.patient_id,n.appointment_id,n.kind,n.message FROM patient_notifications n WHERE n.channel='internal' AND n.kind IN ('reservation_expired','rescheduled','professional_cancelled') ORDER BY n.created_at DESC LIMIT 100`).all<any>();for(const row of rows.results||[])await deliver(env,Number(row.patient_id),row.appointment_id==null?null:Number(row.appointment_id),String(row.kind),String(row.message),`internal:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})}
 async function recurringCreated(env:Env){const rows=await env.DB.prepare(`SELECT id FROM appointments WHERE reservation_kind='recurring' AND status='pending_payment' AND workflow_state='recurring_reserved' AND created_at>=datetime('now','-30 days') ORDER BY created_at DESC LIMIT 200`).all<any>();for(const row of rows.results||[])await sendReservationCreatedEmail(env,Number(row.id))}
 
-async function reliablePaymentReminders(env:Env){
-  const now=Date.now()
-  // Cron runs every 15 minutes. This safety window guarantees the first run after the 48h mark catches the reservation once.
-  const lower=new Date(now+(47.5*3600000)).toISOString()
-  const upper=new Date(now+(48*3600000)).toISOString()
-  const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,a.payment_deadline_at,a.reserved_until,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment' AND av.starts_at>? AND av.starts_at<=? ORDER BY av.starts_at`).bind(lower,upper).all<any>()
-  for(const row of rows.results||[]){
-    const deadlineRaw=row.payment_deadline_at||row.reserved_until
-    if(deadlineRaw&&new Date(deadlineRaw).getTime()<=now)continue
-    if(await notificationAlreadyExists(env,Number(row.id),'payment_reminder_48h'))continue
-    const deadline=deadlineRaw?dateTimeLabel(deadlineRaw):''
-    const message=`Lembrete: sua sessão está reservada para ${dateLabel(row.starts_at)} às ${timeLabel(row.starts_at)}, mas o pagamento ainda não foi confirmado.${deadline?` Realize o pagamento até ${deadline} para manter a reserva.`:''}`
-    await deliver(env,Number(row.patient_id),Number(row.id),'payment_reminder_48h',message,`pay48-once:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})
-  }
-}
 async function reliableAppointmentReminders(env:Env){
   const now=Date.now()
   // Same one-shot strategy: first cron execution after the 24h mark, with dedupe by appointment.
@@ -65,7 +50,7 @@ async function reliableAppointmentReminders(env:Env){
 async function expiredRecurringBackfill(env:Env){const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status IN ('expired','cancelled') AND a.reservation_kind='recurring' AND a.updated_at>=datetime('now','-7 days') ORDER BY a.updated_at DESC LIMIT 100`).all<any>();for(const row of rows.results||[]){if(await notificationAlreadyExists(env,Number(row.id),'reservation_expired'))continue;const message=`Sua reserva recorrente para ${dateLabel(row.starts_at)} às ${timeLabel(row.starts_at)} foi cancelada porque o pagamento não foi realizado no prazo e o horário foi liberado.`;await deliver(env,Number(row.patient_id),Number(row.id),'reservation_expired',message,`expired-backfill:${row.id}`,{action_url:`${env.APP_ORIGIN||''}/paciente`})}}
 async function retryFailed(env:Env){
   if(!env.RESEND_API_KEY||!env.EMAIL_FROM)return
-  const rows=await env.DB.prepare(`SELECT n.id,n.patient_id,n.appointment_id,n.kind,n.message,n.payload_json,n.retry_count,p.email FROM patient_notifications n JOIN patients p ON p.id=n.patient_id WHERE n.channel='email' AND n.status='failed' AND n.kind NOT IN ('payment_reminder','payment_final','payment_reminder_48h','appointment_reminder','appointment_reminder_24h') AND COALESCE(n.retry_count,0)<? AND n.created_at>=datetime('now','-2 days') AND (n.next_retry_at IS NULL OR n.next_retry_at<=CURRENT_TIMESTAMP) ORDER BY n.created_at LIMIT 20`).bind(MAX_EMAIL_ATTEMPTS).all<any>()
+  const rows=await env.DB.prepare(`SELECT n.id,n.patient_id,n.appointment_id,n.kind,n.message,n.payload_json,n.retry_count,p.email FROM patient_notifications n JOIN patients p ON p.id=n.patient_id WHERE n.channel='email' AND n.status='failed' AND n.kind NOT IN ('payment_reminder','payment_final','appointment_reminder','appointment_reminder_24h') AND COALESCE(n.retry_count,0)<? AND n.created_at>=datetime('now','-2 days') AND (n.next_retry_at IS NULL OR n.next_retry_at<=CURRENT_TIMESTAMP) ORDER BY n.created_at LIMIT 20`).bind(MAX_EMAIL_ATTEMPTS).all<any>()
   for(const row of rows.results||[]){const payload=JSON.parse(row.payload_json||'{}'),attempt=Math.max(1,Number(row.retry_count||0)+1);await env.DB.prepare(`UPDATE patient_notifications SET status='sending',retry_count=?,last_attempt_at=CURRENT_TIMESTAMP WHERE id=?`).bind(attempt,row.id).run();const result=await sendResend(env,row.email,subjectFor(row.kind),row.message,payload.action_url);if(result.ok){await env.DB.prepare(`UPDATE patient_notifications SET status='sent',sent_at=CURRENT_TIMESTAMP,error_message=NULL,next_retry_at=NULL WHERE id=?`).bind(row.id).run();continue}const next=attempt<MAX_EMAIL_ATTEMPTS?nextRetryAt(attempt):null;await env.DB.prepare(`UPDATE patient_notifications SET status='failed',error_message=?,next_retry_at=? WHERE id=?`).bind(result.error,next,row.id).run()}
 }
-export async function runEmailNotificationTasks(env:Env){await recurringCreated(env);await mirrorInternalNotifications(env);await reliablePaymentReminders(env);await expiredRecurringBackfill(env);await reliableAppointmentReminders(env);await retryFailed(env)}
+export async function runEmailNotificationTasks(env:Env){await recurringCreated(env);await mirrorInternalNotifications(env);await expiredRecurringBackfill(env);await reliableAppointmentReminders(env);await retryFailed(env)}
