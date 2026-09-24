@@ -247,7 +247,7 @@ async function renderAgenda() {
         </div>
       </section>
       <section class="patient-week-grid">
-        \${days.map(day => {
+        ${days.map(day => {
           const items = (byDay.get(ymd(day)) || []).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
           const freeItems = items.filter(slot => slot.public_status === 'free' && new Date(slot.starts_at).getTime() > now)
           const mobileAgenda = window.matchMedia('(max-width: 760px)').matches
@@ -258,16 +258,16 @@ async function renderAgenda() {
               return date.getHours() === hour && date.getMinutes() === 0
             })
             if (!slot) {
-              return \`<button type="button" class="patient-slot occupied" disabled><span>\${String(hour).padStart(2, '0')}:00</span><small>Ocupado</small></button>\`
+              return `<button type="button" class="patient-slot occupied" disabled><span>${String(hour).padStart(2, '0')}:00</span><small>Ocupado</small></button>`
             }
             const free = slot.public_status === 'free' && new Date(slot.starts_at).getTime() > now
-            return \`<button type="button" class="patient-slot \${free ? 'free' : 'occupied'}" data-slot-id="\${slot.id}" \${free ? '' : 'disabled'}><span>\${esc(timeLabel(slot.starts_at))}</span><small>\${free ? 'Disponível' : 'Ocupado'}</small></button>\`
+            return `<button type="button" class="patient-slot ${free ? 'free' : 'occupied'}" data-slot-id="${slot.id}" ${free ? '' : 'disabled'}><span>${esc(timeLabel(slot.starts_at))}</span><small>${free ? 'Disponível' : 'Ocupado'}</small></button>`
           }).join('')
-          const mobileItems = freeItems.map(slot => \`<button type="button" class="patient-slot free" data-slot-id="\${slot.id}"><span>\${esc(timeLabel(slot.starts_at))}</span><small>Disponível</small></button>\`).join('')
-          return \`<article class="patient-week-day">
-            <header><strong>\${day.getDate()}</strong><span>\${esc(shortDay(day))}</span></header>
-            <div>\${mobileAgenda ? (mobileItems || '<p class="patient-no-slots">Sem horários disponíveis</p>') : desktopItems}</div>
-          </article>\`
+          const mobileItems = freeItems.map(slot => `<button type="button" class="patient-slot free" data-slot-id="${slot.id}"><span>${esc(timeLabel(slot.starts_at))}</span><small>Disponível</small></button>`).join('')
+          return `<article class="patient-week-day">
+            <header><strong>${day.getDate()}</strong><span>${esc(shortDay(day))}</span></header>
+            <div>${mobileAgenda ? (mobileItems || '<p class="patient-no-slots">Sem horários disponíveis</p>') : desktopItems}</div>
+          </article>`
         }).join('')}
       </section>
       <aside class="patient-booking-box">${bookingMarkup()}</aside>
