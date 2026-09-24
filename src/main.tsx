@@ -22,6 +22,7 @@ import { installPatientSecurityDeletePolish } from './patient-security-delete-po
 import { installAdminAppointmentEnhancer } from './admin-appointment-enhancer'
 import { installAdminPatientRecurrenceEnhancer } from './admin-patient-recurrence-enhancer'
 import { installAdminClinicalNotesEnhancer } from './admin-clinical-notes-enhancer'
+import { installClinicalE2E } from './clinical-e2e-client'
 import { installAdminPatientWorkspaceEnhancer } from './admin-patient-workspace-enhancer'
 import { installAdminDashboardSessionState } from './admin-dashboard-session-state'
 import { installPricingUiEnhancer } from './pricing-ui-enhancer'
@@ -109,6 +110,8 @@ function installPatientModules(){
 }
 
 if(isAdminPath){
+  // O cofre E2E precisa interceptar o fetch antes de qualquer módulo abrir/salvar prontuários.
+  safeInstall('cofre clínico E2E',installClinicalE2E)
   // Somente os módulos administrativos observam o DOM do painel.
   safeInstall('espaço do paciente',installAdminPatientWorkspaceEnhancer)
   safeInstall('recorrência do paciente',installAdminPatientRecurrenceEnhancer)
