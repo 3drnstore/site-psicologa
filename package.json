@@ -16,7 +16,8 @@
   "dependencies": {
     "lucide-react": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "jspdf": "^3.0.3"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
