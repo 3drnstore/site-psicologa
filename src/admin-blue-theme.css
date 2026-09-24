@@ -1,0 +1,18 @@
+.admin-page{--admin-blue:#6f91c8;--admin-blue-strong:#4f6f9f;--admin-blue-soft:#edf4fc;--admin-blue-soft-2:#f6f9fd;--admin-border:#dbe5f1;--admin-text:#425b7c;--admin-muted:#74859b;--admin-white:#fff;background:#f4f7fb;color:var(--admin-text)}
+.admin-page .admin-panel,.admin-page .admin-security-panel,.admin-page .admin-users-panel,.admin-page .admin-security-form,.admin-page .admin-user-row,.admin-page .admin-dashboard-card,.admin-page .admin-kpi,.admin-page .admin-table-card{background:#fff!important;border-color:var(--admin-border)!important}
+.admin-page .admin-security-form,.admin-page .admin-create-user-form,.admin-page .admin-role-explainer>div,.admin-page .admin-dashboard-row,.admin-page .admin-table-row.header{background:var(--admin-blue-soft-2)!important}
+.admin-page .admin-primary,.admin-page button.primary-button,.admin-page .primary-button{background:var(--admin-blue)!important;border-color:var(--admin-blue)!important;color:#fff!important}
+.admin-page .admin-primary:hover,.admin-page button.primary-button:hover,.admin-page .primary-button:hover{background:var(--admin-blue-strong)!important;border-color:var(--admin-blue-strong)!important}
+.admin-page .secondary-button{background:#fff!important;border-color:#cfdced!important;color:#58739a!important}
+.admin-page .secondary-button:hover{background:var(--admin-blue-soft)!important;border-color:#bfcfe4!important}
+.admin-page .admin-access-badge.owner,.admin-page .admin-access-badge.assistant{background:#e9f1fb!important;color:#4f6f9f!important}
+.admin-page .admin-2fa-card{background:#fff!important;border-color:var(--admin-border)!important}
+.admin-page .admin-2fa-card p,.admin-page .admin-2fa-status span,.admin-page .admin-2fa-login-field small{color:var(--admin-muted)!important}
+.admin-page .admin-2fa-status.on,.admin-page .admin-2fa-status.off{background:var(--admin-blue-soft)!important;color:var(--admin-text)!important}
+.admin-page .admin-2fa-status strong{color:var(--admin-text)!important}
+.admin-page .admin-2fa-setup code{background:#3f5f8d!important;color:#fff!important}
+.admin-page .admin-security-notice.success,.admin-page .admin-2fa-notice.success,.admin-page .admin-2fa-notice:not(.error){background:#edf4fc!important;border-color:#cbdbee!important;color:#4e6c96!important}
+.admin-page .admin-kpi.attention,.admin-page .admin-kpi.success{background:#fff!important;border-color:var(--admin-border)!important}
+.admin-page .admin-kpi.attention strong,.admin-page .admin-kpi.success strong{color:var(--admin-text)!important}
+.admin-page .admin-status-chip.confirmed,.admin-page .admin-status-chip.paid,.admin-page .admin-status-chip.pending_payment,.admin-page .admin-status-chip.pending,.admin-page .admin-status-chip.other{background:#e9f1fb!important;color:#526f97!important}
+.admin-page input:focus,.admin-page select:focus,.admin-page textarea:focus{border-color:#7899ce!important;box-shadow:0 0 0 3px rgba(117,149,200,.12)!important}
