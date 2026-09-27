@@ -5,7 +5,7 @@
   "compatibility_date": "2026-09-01",
   "keep_vars": true,
   "vars": {
-    "APP_ORIGIN": "https://site-psicologa.thiagodrn2.workers.dev",
+    "APP_ORIGIN": "https://jacquelinesiqueira.psc.br",
     "MERCADOPAGO_TEST_MODE": "true"
   },
   "triggers": {
