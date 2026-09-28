@@ -55,6 +55,7 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
   const appointments=await env.DB.prepare(`SELECT a.id,a.status,a.calendar_sync_state,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE av.starts_at<? AND av.ends_at>? ORDER BY av.starts_at LIMIT 100`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
   const availability=await env.DB.prepare(`SELECT id,starts_at,ends_at,status,source FROM availability WHERE starts_at<? AND ends_at>? AND status IN ('blocked','occupied','held','confirmed') ORDER BY starts_at LIMIT 150`).bind(new Date(to).toISOString(),new Date(from).toISOString()).all<any>()
   const mappings=await env.DB.prepare(`SELECT key,value FROM settings WHERE key LIKE 'google_availability_event:%' ORDER BY key LIMIT 150`).all<any>()
+  const syncErrors=await env.DB.prepare(`SELECT key,value FROM settings WHERE key LIKE 'google_calendar_sync_error:%' ORDER BY key LIMIT 100`).all<any>()
 
   return json({
     ok:true,
@@ -69,6 +70,7 @@ export async function handleGoogleCalendarDiagnostic(request:Request,env:Env,pat
     appointments:(appointments.results||[]).map((x:any)=>({id:x.id,status:x.status,calendar_sync_state:x.calendar_sync_state,has_google_event_id:Boolean(x.google_calendar_event_id),starts_at:x.starts_at,ends_at:x.ends_at,patient:x.full_name})),
     local_busy_slots:(availability.results||[]),
     portal_google_mappings:(mappings.results||[]).map((x:any)=>({key:x.key,has_event_id:Boolean(x.value)})),
+    appointment_sync_errors:(syncErrors.results||[]).map((x:any)=>({appointment_id:Number(String(x.key).split(':').pop()),error:String(x.value||'')})),
     note:'Somente leitura. Este diagnóstico não cria, altera nem apaga eventos no Google Calendar.'
   })
 }
