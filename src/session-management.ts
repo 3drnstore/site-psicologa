@@ -137,6 +137,7 @@ async function expireUnpaidReservations(env:Env){
   for(const row of rows.results||[]){
     const changed=await env.DB.prepare(`UPDATE appointments SET status='cancelled',workflow_state='payment_deadline_missed',cancellation_reason='Pagamento não realizado até o prazo',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(row.id).run();if(!Number(changed.meta.changes||0))continue
     await env.DB.prepare(`UPDATE availability SET status='free',source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='held'`).bind(row.availability_id).run()
+    await syncCalendarEvent(env,row.id,'remove')
     await env.DB.prepare(`UPDATE payments SET status='failed',raw_status='reservation_cancelled_payment_deadline',updated_at=CURRENT_TIMESTAMP WHERE appointment_id=? AND status='pending'`).bind(row.id).run()
     await audit(env,'system',null,'reservation_cancelled_payment_deadline','appointment',row.id,{starts_at:row.starts_at,deadline:row.deadline,reservation_kind:row.reservation_kind})
     await queueNotification(env,row.patient_id,row.id,'reservation_expired',`Sua reserva para ${ptDate(row.starts_at)} às ${ptTime(row.starts_at)} foi cancelada automaticamente porque o pagamento não foi realizado até o prazo. O horário foi liberado.`,[ptDate(row.starts_at),ptTime(row.starts_at)],`payment-deadline-cancelled:${row.id}`)
