@@ -147,9 +147,15 @@ async function normalizeStandardPaymentDeadlines(env:Env){
   for(const row of rows.results||[]){
     const created=databaseUtcDate(row.created_at)
     if(!created)continue
-    const deadline=new Date(created.getTime()+15*60*1000).toISOString()
-    await env.DB.prepare(`UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=? AND status='pending_payment' AND COALESCE(reservation_kind,'standard')<>'recurring' AND (payment_deadline_at IS NULL OR payment_deadline_at<>? OR reserved_until IS NULL OR reserved_until<>?)`)
-      .bind(deadline,deadline,row.id,deadline,deadline).run()
+    const targetMs=created.getTime()+15*60*1000
+    const paymentDeadline=databaseUtcDate(row.payment_deadline_at)
+    const reservedUntil=databaseUtcDate(row.reserved_until)
+    // Newly-created reservations can differ from CURRENT_TIMESTAMP by a few
+    // milliseconds because SQLite stores created_at with second precision.
+    if(paymentDeadline&&reservedUntil&&Math.abs(paymentDeadline.getTime()-targetMs)<2000&&Math.abs(reservedUntil.getTime()-targetMs)<2000)continue
+    const deadline=new Date(targetMs).toISOString()
+    await env.DB.prepare(`UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=? AND status='pending_payment' AND COALESCE(reservation_kind,'standard')<>'recurring'`)
+      .bind(deadline,deadline,row.id).run()
   }
 }
 
