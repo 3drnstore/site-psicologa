@@ -43,6 +43,11 @@ async function fixture(){
   function appointment(id,{kind='standard',deadline=iso(-1000),status='pending_payment',event=null,starts=iso(7*day)}={}){
     slot(id,starts,status==='confirmed'?'confirmed':'held')
     db.prepare('INSERT INTO appointments(id,patient_id,availability_id,status,amount_cents,reservation_kind,payment_deadline_at,reserved_until,google_calendar_event_id) VALUES(?,1,?,?,10000,?,?,?,?)').run(id,id,status,kind,deadline,deadline,event)
+    // Test fixtures with an already-expired standard deadline represent a
+    // reservation whose 15-minute window elapsed in the past.
+    if(kind==='standard'&&status==='pending_payment'&&Date.parse(deadline)<=Date.now()){
+      db.prepare('UPDATE appointments SET created_at=? WHERE id=?').run(new Date(Date.parse(deadline)-15*60*1000).toISOString(),id)
+    }
     return id
   }
   function google(status=204){
@@ -83,14 +88,38 @@ test('expiration cancels, releases, fails pending payment, deletes Google event 
   assert.equal(f.one('SELECT count(*) AS n FROM audit_log').n,1)
 })
 
+test('legacy standard reservation with a stale future deadline still expires 15 minutes after creation',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day),event:'event1'});const calls=f.google()
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-30 minutes')")
+  await expireUnpaidReservations(f.env)
+  const ap=f.one('SELECT status,payment_deadline_at,reserved_until FROM appointments WHERE id=1')
+  assert.equal(ap.status,'cancelled')
+  assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')
+  assert.equal(calls.filter(c=>c.method==='DELETE').length,1)
+  assert.ok(Date.parse(ap.payment_deadline_at)<=Date.now())
+  assert.equal(ap.payment_deadline_at,ap.reserved_until)
+})
+
+test('unexpired standard reservation has its stale deadline corrected to creation plus 15 minutes',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-5 minutes')")
+  await expireUnpaidReservations(f.env)
+  const ap=f.one('SELECT status,created_at,payment_deadline_at,reserved_until FROM appointments WHERE id=1')
+  assert.equal(ap.status,'pending_payment')
+  const created=Date.parse(ap.created_at.replace(' ','T')+'Z')
+  assert.ok(Math.abs(Date.parse(ap.payment_deadline_at)-(created+15*60*1000))<1000)
+  assert.equal(ap.payment_deadline_at,ap.reserved_until)
+})
+
 test('unexpired and confirmed reservations survive; recurring normalization retains 24-hour rule',async()=>{
   const f=await fixture(),starts=iso(7*day)
   f.appointment(1,{deadline:iso(600000)})
   f.appointment(2,{kind:'recurring',starts,deadline:iso(3*day)})
   f.appointment(3,{status:'confirmed'})
-  const standard=f.one('SELECT payment_deadline_at FROM appointments WHERE id=1').payment_deadline_at
   await normalizeHourlyDeadlines(f.env);await expireUnpaidReservations(f.env)
-  assert.equal(f.one('SELECT payment_deadline_at FROM appointments WHERE id=1').payment_deadline_at,standard)
+  const standard=f.one('SELECT created_at,payment_deadline_at FROM appointments WHERE id=1')
+  const created=Date.parse(String(standard.created_at).replace(' ','T')+'Z')
+  assert.ok(Math.abs(Date.parse(standard.payment_deadline_at)-(created+15*60*1000))<1000)
   assert.equal(f.one('SELECT payment_deadline_at FROM appointments WHERE id=2').payment_deadline_at,new Date(Date.parse(starts)-day).toISOString())
   assert.deepEqual(f.db.prepare('SELECT status FROM appointments ORDER BY id').all().map(x=>x.status),['pending_payment','pending_payment','confirmed'])
 })
@@ -231,7 +260,7 @@ test('simultaneous Google syncs converge on one deterministic event and expirati
   assert.deepEqual(ids,['portalappt1','portalappt1'])
   assert.equal(postCalls,2)
   assert.equal(f.one('SELECT google_calendar_event_id FROM appointments WHERE id=1').google_calendar_event_id,'portalappt1')
-  f.db.prepare('UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=1').run(iso(-1),iso(-1))
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-16 minutes')")
   await expireUnpaidReservations(f.env)
   assert.equal(deleteCalls,1)
   assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')

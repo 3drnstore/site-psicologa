@@ -134,7 +134,36 @@ export async function ensureNextRecurringReservation(env:Env,confirmedAppointmen
 }
 export async function afterAppointmentConfirmed(env:Env,appointmentId:number){await ensureNextRecurringReservation(env,appointmentId)}
 
+function databaseUtcDate(value:unknown){
+  const raw=String(value||'').trim()
+  if(!raw)return null
+  const normalized=/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)?raw.replace(' ','T')+'Z':raw
+  const date=new Date(normalized)
+  return Number.isNaN(date.getTime())?null:date
+}
+
+async function normalizeStandardPaymentDeadlines(env:Env){
+  const rows=await env.DB.prepare(`SELECT id,created_at,payment_deadline_at,reserved_until FROM appointments WHERE status='pending_payment' AND COALESCE(reservation_kind,'standard')<>'recurring' AND created_at IS NOT NULL`).all<any>()
+  for(const row of rows.results||[]){
+    const created=databaseUtcDate(row.created_at)
+    if(!created)continue
+    const targetMs=created.getTime()+15*60*1000
+    const paymentDeadline=databaseUtcDate(row.payment_deadline_at)
+    const reservedUntil=databaseUtcDate(row.reserved_until)
+    // Newly-created reservations can differ from CURRENT_TIMESTAMP by a few
+    // milliseconds because SQLite stores created_at with second precision.
+    if(paymentDeadline&&reservedUntil&&Math.abs(paymentDeadline.getTime()-targetMs)<2000&&Math.abs(reservedUntil.getTime()-targetMs)<2000)continue
+    const deadline=new Date(targetMs).toISOString()
+    await env.DB.prepare(`UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=? AND status='pending_payment' AND COALESCE(reservation_kind,'standard')<>'recurring'`)
+      .bind(deadline,deadline,row.id).run()
+  }
+}
+
 export async function expireUnpaidReservations(env:Env){
+  // Standard reservations always expire 15 minutes after their creation, even if
+  // an older deployment stored a later deadline. Recurring reservations retain
+  // their own specific deadline policy.
+  await normalizeStandardPaymentDeadlines(env)
   const rows=await env.DB.prepare(`SELECT a.id,a.patient_id,a.availability_id,a.reservation_kind,COALESCE(a.payment_deadline_at,a.reserved_until) AS deadline,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment' AND COALESCE(a.payment_deadline_at,a.reserved_until) IS NOT NULL AND COALESCE(a.payment_deadline_at,a.reserved_until)<=?`).bind(nowIso()).all<any>()
   for(const row of rows.results||[]){
     // Recheck the deadline in the write and release the slot in the same transaction.
