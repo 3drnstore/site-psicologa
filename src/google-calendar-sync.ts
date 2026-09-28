@@ -129,6 +129,16 @@ async function markInactivePortalAppointments(env:Env){
   await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='inactive' WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed')`).run().catch(()=>null)
 }
 
+export async function retryPendingGoogleCalendarAppointments(env:Env){
+  const rows=await env.DB.prepare(`SELECT id FROM appointments WHERE status IN ('pending_payment','confirmed') AND (calendar_sync_state IS NULL OR calendar_sync_state='pending') ORDER BY updated_at ASC LIMIT 25`).all<any>()
+  let synced=0,failed=0
+  for(const row of rows.results||[]){
+    const eventId=await syncPortalAppointmentToGoogle(env,Number(row.id))
+    if(eventId)synced++;else failed++
+  }
+  return{attempted:(rows.results||[]).length,synced,failed}
+}
+
 export async function syncGoogleCalendarAvailability(env:Env,from:string,to:string,force=false){
   if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)return{configured:false,synced:false}
   const syncKey=rangeSyncKey(from,to);if(!force&&Date.now()-await lastSync(env,syncKey)<SYNC_TTL_MS)return{configured:true,synced:false,cached:true}
