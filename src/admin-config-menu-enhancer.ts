@@ -1,12 +1,12 @@
 import './admin-config-menu.css'
 
-type ConfigPage='pricing'|'security'|'users'
-const routes:Record<ConfigPage,string>={pricing:'/admin/configuracoes/tabelas-precos',security:'/admin/configuracoes/seguranca',users:'/admin/configuracoes/usuarios'}
+type ConfigPage='site'|'pricing'|'security'|'users'
+const routes:Record<ConfigPage,string>={site:'/admin/configuracoes/site',pricing:'/admin/configuracoes/tabelas-precos',security:'/admin/configuracoes/seguranca',users:'/admin/configuracoes/usuarios'}
 let activating=false
 
 function configButton(){return [...document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button')].find(b=>(b.textContent||'').trim()==='Configurações')}
-function pageFromPath():ConfigPage|null{const p=location.pathname.replace(/\/+$/,'');if(p===routes.pricing)return'pricing';if(p===routes.security)return'security';if(p===routes.users)return'users';return null}
-function setHeader(page:ConfigPage){const h=document.querySelector<HTMLElement>('.admin-topbar h1');const k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent=page==='pricing'?'Tabelas de Preços':page==='security'?'Segurança':'Gestão de usuários';if(k)k.textContent='Configurações'}
+function pageFromPath():ConfigPage|null{const p=location.pathname.replace(/\/+$/,'');if(p===routes.site)return'site';if(p===routes.pricing)return'pricing';if(p===routes.security)return'security';if(p===routes.users)return'users';return null}
+function setHeader(page:ConfigPage){const h=document.querySelector<HTMLElement>('.admin-topbar h1');const k=document.querySelector<HTMLElement>('.admin-topbar .section-kicker');if(h)h.textContent=page==='site'?'Site':page==='pricing'?'Tabelas de Preços':page==='security'?'Segurança':'Gestão de usuários';if(k)k.textContent='Configurações'}
 function setConfigActive(){document.querySelectorAll<HTMLButtonElement>('.admin-sidebar nav button').forEach(b=>b.classList.toggle('active',b===configButton()))}
 function clearForeignCustomView(){const main=document.querySelector<HTMLElement>('.admin-main');if(!main)return;main.classList.remove('admin-custom-mode');main.querySelector('.admin-custom-view')?.remove()}
 
@@ -22,9 +22,9 @@ function ensureMenu(){
   const parent=configButton();if(!parent)return null
   let menu=parent.nextElementSibling as HTMLElement|null
   if(!menu?.classList.contains('admin-config-submenu')){
-    menu=document.createElement('div');menu.className='admin-config-submenu';menu.innerHTML=`<a href="${routes.pricing}" data-config-page="pricing">Tabelas de Preços</a><a href="${routes.security}" data-config-page="security">Segurança</a><a href="${routes.users}" data-config-page="users">Gestão de usuários</a>`;parent.after(menu)
+    menu=document.createElement('div');menu.className='admin-config-submenu';menu.innerHTML=`<a href="${routes.site}" data-config-page="site">Site</a><a href="${routes.pricing}" data-config-page="pricing">Tabelas de Preços</a><a href="${routes.security}" data-config-page="security">Segurança</a><a href="${routes.users}" data-config-page="users">Gestão de usuários</a>`;parent.after(menu)
   }
-  if(!parent.dataset.configRouteBound){parent.dataset.configRouteBound='1';parent.addEventListener('click',()=>{if(!pageFromPath())window.setTimeout(()=>navigate('pricing'),0)})}
+  if(!parent.dataset.configRouteBound){parent.dataset.configRouteBound='1';parent.addEventListener('click',()=>{if(!pageFromPath())window.setTimeout(()=>navigate('site'),0)})}
   if(!menu.dataset.bound){menu.dataset.bound='1';menu.addEventListener('click',e=>{const a=(e.target as HTMLElement).closest<HTMLAnchorElement>('[data-config-page]');if(!a)return;e.preventDefault();navigate(a.dataset.configPage as ConfigPage)})}
   const nav=parent.closest('nav')
   if(nav&&!nav.hasAttribute('data-config-exit-bound')){

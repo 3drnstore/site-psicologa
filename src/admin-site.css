@@ -1,0 +1,17 @@
+.admin-site-host{display:block}
+.admin-site-panel{display:grid;gap:22px}
+.admin-site-heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.admin-site-heading h2{margin:4px 0 8px}
+.admin-site-heading p{margin:0;color:#66758a}
+.admin-site-notice{padding:12px 14px;border-radius:10px;background:#eef6ff;color:#315f9f;font-weight:700}
+.admin-site-photo-preview{max-width:520px}
+.admin-site-photo-empty{min-height:180px;border:1px dashed #cbd8e8;border-radius:16px;display:grid;place-items:center;padding:22px;color:#718198;background:#fafcff;text-align:center}
+.admin-site-photo-current{display:grid;grid-template-columns:minmax(160px,240px) 1fr;gap:20px;align-items:center}
+.admin-site-photo-current img{display:block;width:100%;aspect-ratio:.82;object-fit:cover;object-position:center top;border-radius:24px;box-shadow:0 14px 38px rgba(48,72,98,.16);background:#edf2f6}
+.admin-site-photo-current div{display:grid;gap:5px}
+.admin-site-photo-current span{color:#718198;font-size:13px}
+.admin-site-photo-form{max-width:620px}
+.admin-site-photo-form small{color:#718198;line-height:1.5}
+.admin-site-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.admin-site-delete{color:#a33b3b;border-color:#e2bcbc}
+@media(max-width:720px){.admin-site-photo-current{grid-template-columns:1fr}.admin-site-photo-current img{max-width:280px}.admin-site-actions{align-items:stretch}.admin-site-actions button{width:100%}}

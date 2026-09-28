@@ -32,6 +32,7 @@ import { installPatientMessageEnhancer } from './patient-message-enhancer'
 import { installAdminMessagesEnhancer } from './admin-messages-enhancer'
 import { installD1FetchCache } from './d1-fetch-cache'
 import { installProfessionalPresentationEnhancer } from './professional-presentation-enhancer'
+import { installProfessionalPhotoEnhancer } from './professional-photo-enhancer'
 import { installContactSectionEnhancer } from './contact-section-enhancer'
 import { installPatientRouteSync } from './patient-route-sync'
 import { installHomepageCtaSafe } from './homepage-cta-safe'
@@ -43,6 +44,7 @@ import { installSessionManagementUi } from './session-management-ui'
 import { installPatientFlowHotfix } from './patient-flow-hotfix'
 import { installAdminReceitaSaudeEnhancer } from './admin-receita-saude-enhancer'
 import { installAdminFinanceEnhancer } from './admin-finance-enhancer'
+import { installAdminSiteEnhancer } from './admin-site-enhancer'
 import './styles.css'
 import './app-extra.css'
 import './v2.css'
@@ -124,6 +126,7 @@ if(isAdminPath){
   safeInstall('segurança de sessão administrativa',installAdminSessionSecurityEnhancer)
   safeInstall('2FA administrativo',installAdmin2faEnhancer)
   safeInstall('menu de configurações',installAdminConfigMenuEnhancer)
+  safeInstall('configurações do site',installAdminSiteEnhancer)
   safeInstall('consultas administrativas complementares',installAdminAppointmentEnhancer)
   safeInstall('estado da sessão do painel',installAdminDashboardSessionState)
   safeInstall('preços administrativos',installAdminPlatformPricingEnhancer)
@@ -150,6 +153,7 @@ if(isAdminPath){
     safeInstall('convite da plataforma',installPlatformInviteEnhancer)
     safeInstall('preços',installPricingUiEnhancer)
     safeInstall('apresentação profissional',installProfessionalPresentationEnhancer)
+    safeInstall('foto profissional',installProfessionalPhotoEnhancer)
     safeInstall('contato',installContactSectionEnhancer)
     safeInstall('CTA da página inicial',installHomepageCtaSafe)
     safeInstall('links de privacidade',installPrivacyLinksSafe)
