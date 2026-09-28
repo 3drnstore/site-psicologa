@@ -6,7 +6,7 @@
   "keep_vars": true,
   "vars": {
     "APP_ORIGIN": "https://jacquelinesiqueira.psc.br",
-    "MERCADOPAGO_TEST_MODE": "true"
+    "MERCADOPAGO_TEST_MODE": "false"
   },
   "triggers": {
     "crons": ["*/15 * * * *"]
