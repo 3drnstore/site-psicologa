@@ -1,5 +1,6 @@
 import { clearCookie, cookie, hashPassword, randomToken, readCookie, sha256, verifyPassword } from './auth'
 import { expireUnpaidReservations } from './session-management'
+import { confirmVerifiedPayment } from './payment-confirmation'
 import type { Env } from './types'
 
 const PATIENT_COOKIE = 'ps_session'
@@ -122,15 +123,9 @@ async function createCalendarEvent(env: Env, appointmentId: number) {
 async function confirmPayment(env: Env, paymentId: number, externalStatus = 'approved') {
   const payment = await env.DB.prepare(`SELECT * FROM payments WHERE id = ?`).bind(paymentId).first<any>()
   if (!payment) return false
-  const appointment = await env.DB.prepare(`SELECT * FROM appointments WHERE id = ?`).bind(payment.appointment_id).first<any>()
-  if (!appointment) return false
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE payments SET status = 'approved', raw_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(externalStatus, paymentId),
-    env.DB.prepare(`UPDATE appointments SET status = 'confirmed', paid_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(appointment.id),
-    env.DB.prepare(`UPDATE availability SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(appointment.availability_id),
-  ])
-  await createCalendarEvent(env, appointment.id)
-  await audit(env, 'system', null, 'payment_confirmed', 'appointment', appointment.id, { payment_id: paymentId })
+  const confirmed = await confirmVerifiedPayment(env, payment, externalStatus)
+  if (!confirmed) return false
+  await audit(env, 'system', null, 'payment_confirmed', 'appointment', payment.appointment_id, { payment_id: paymentId })
   return true
 }
 

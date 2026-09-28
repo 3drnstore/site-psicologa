@@ -1,6 +1,5 @@
 import { readCookie, sha256 } from './auth'
-import { sendAppointmentConfirmationEmail } from './appointment-confirmation-email'
-import { syncPortalAppointmentToGoogle } from './google-calendar-sync'
+import { confirmVerifiedPayment as confirm } from './payment-confirmation'
 import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -31,27 +30,6 @@ async function methodPrice(env: Env, method: 'pix' | 'credit_card', fallback: nu
   return Math.max(0, Math.round(legacy || fallback || 0))
 }
 
-async function confirm(env: Env, payment: any, rawStatus: string, actualMethod?: string) {
-  if (payment.status === 'approved') return
-  const appointment = await env.DB.prepare('SELECT * FROM appointments WHERE id=?').bind(payment.appointment_id).first<any>()
-  if (!appointment) return
-
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE payments SET status='approved',raw_status=?,method=COALESCE(?,method),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(rawStatus, actualMethod || null, payment.id),
-    env.DB.prepare(`UPDATE appointments SET status='confirmed',amount_cents=?,paid_at=CURRENT_TIMESTAMP,payment_method=COALESCE(?,payment_method),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(Number(payment.amount_cents), actualMethod || null, appointment.id),
-    env.DB.prepare(`UPDATE availability SET status='confirmed',public_visibility='visible',updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(appointment.availability_id),
-  ])
-
-  // A reserva já pode ter criado o evento no Google como "Pendente de pagamento".
-  // Ao confirmar o pagamento, sincronizamos o MESMO evento para "Confirmada".
-  // syncPortalAppointmentToGoogle faz PATCH quando google_calendar_event_id já existe
-  // e só cria um novo evento se o vínculo anterior não existir mais.
-  await syncPortalAppointmentToGoogle(env, Number(appointment.id))
-  await sendAppointmentConfirmationEmail(env, Number(appointment.id))
-}
 
 async function expirePayment(env: Env, payment: any, rawStatus: string) {
   const appointment = await env.DB.prepare('SELECT * FROM appointments WHERE id=?').bind(payment.appointment_id).first<any>()

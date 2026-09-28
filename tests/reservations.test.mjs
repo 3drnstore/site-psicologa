@@ -16,6 +16,8 @@ const { handlePublicAvailabilityV3 }=await import('../src/public-availability-v3
 const { handleScheduleV2 }=await import('../src/schedule-v2.ts')
 const { removePortalAppointmentFromGoogle, retryPendingGoogleCalendarAppointments, syncPortalAppointmentToGoogle }=await import('../src/google-calendar-sync.ts')
 const { sha256 }=await import('../src/auth.ts')
+const { handlePaymentsV2 }=await import('../src/payments-v2.ts')
+const { default: worker }=await import('../src/worker.ts')
 const realFetch=globalThis.fetch
 afterEach(()=>{globalThis.fetch=realFetch})
 const iso=offset=>new Date(Date.now()+offset).toISOString()
@@ -253,4 +255,168 @@ test('recurrence reconciliation does not recreate a cancelled occurrence or recl
   assert.equal(await ensureNextRecurringReservation(f.env,1),id)
   assert.equal(f.one('SELECT count(*) AS n FROM appointments').n,2)
   assert.equal(f.one(`SELECT av.status FROM availability av JOIN appointments a ON a.availability_id=av.id WHERE a.id=${id}`).status,'free')
+})
+
+async function approvedPayment(f,provider='mercadopago',beforeProviderResponse=()=>{}){
+  f.db.prepare('INSERT INTO payments(id,appointment_id,provider,method,status,amount_cents,external_id) VALUES(1,1,?,?,\'pending\',10000,\'fake-order\')').run(provider,provider==='mercadopago'?'pix':'credit_card')
+  Object.assign(f.env,{MERCADOPAGO_ACCESS_TOKEN:'fake',INFINITEPAY_HANDLE:'fake'})
+  const calls=[]
+  globalThis.fetch=async(url,init)=>{
+    calls.push({url:String(url),method:init?.method||'GET'})
+    if(String(url).startsWith('https://api.mercadopago.com/v1/orders/')){
+      await beforeProviderResponse()
+      return Response.json({status:'processed',status_detail:'accredited',total_amount:'100.00',transactions:{payments:[{payment_method:{id:'pix'}}]}})
+    }
+    if(String(url)==='https://api.checkout.infinitepay.io/payment_check'){
+      await beforeProviderResponse()
+      return Response.json({paid:true,amount:10000,capture_method:'credit_card'})
+    }
+    throw Error('Unexpected external request: '+url)
+  }
+  async function notify(){
+    if(provider==='mercadopago'){
+      const path='/api/payments/status/1'
+      return handlePaymentsV2(f.req(path),f.env,path,{waitUntil(){}})
+    }
+    const path='/api/payments/infinitepay/callback',tasks=[]
+    const response=await handlePaymentsV2(f.req(path,false,{order_nsu:'1',invoice_slug:'fake',transaction_nsu:'fake'}),f.env,path,{waitUntil(p){tasks.push(p)}})
+    await Promise.all(tasks)
+    return response
+  }
+  return {calls,notify}
+}
+
+for(const provider of ['mercadopago','infinitepay']){
+  test(`${provider}: timely approved payment confirms exactly once`,async()=>{
+    const f=await fixture();f.appointment(1,{deadline:iso(600000)})
+    const p=await approvedPayment(f,provider)
+    await p.notify();await p.notify()
+    assert.equal(f.one('SELECT status FROM appointments').status,'confirmed')
+    assert.equal(f.one('SELECT status FROM availability').status,'confirmed')
+    assert.equal(f.one('SELECT status FROM payments').status,'approved')
+    assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,0)
+  })
+
+  for(const status of ['cancelled','expired'])test(`${provider}: approved payment never reactivates ${status} reservation`,async()=>{
+    const f=await fixture();f.appointment(1,{status,deadline:iso(day)})
+    f.db.exec("UPDATE availability SET status='free'")
+    f.google();Object.assign(f.env,{RESEND_API_KEY:'fake',EMAIL_FROM:'test@example.invalid'})
+    const p=await approvedPayment(f,provider)
+    await p.notify();await p.notify()
+    assert.equal(f.one('SELECT status FROM appointments').status,status)
+    assert.equal(f.one('SELECT paid_at FROM appointments').paid_at,null)
+    assert.equal(f.one('SELECT status FROM availability').status,'free')
+    assert.equal(f.one('SELECT status FROM payments').status,'approved')
+    assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,1)
+    assert.equal(p.calls.some(c=>c.url.includes('googleapis')||c.url.includes('resend')),false)
+  })
+
+  test(`${provider}: late approval before cron cleanup expires the reservation but retains payment`,async()=>{
+    const f=await fixture();f.appointment(1)
+    const p=await approvedPayment(f,provider);await p.notify()
+    assert.equal(f.one('SELECT status FROM appointments').status,'cancelled')
+    assert.equal(f.one('SELECT status FROM availability').status,'free')
+    assert.equal(f.one('SELECT status FROM payments').status,'approved')
+    assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,1)
+  })
+
+  test(`${provider}: cancellation while payment verification is in flight cannot reclaim another booking`,async()=>{
+    const f=await fixture();f.appointment(1,{deadline:iso(day)})
+    const p=await approvedPayment(f,provider,()=>{
+      f.db.exec("UPDATE appointments SET status='cancelled' WHERE id=1; INSERT OR IGNORE INTO appointments(id,patient_id,availability_id,status) VALUES(2,1,1,'confirmed'); UPDATE availability SET status='confirmed'")
+    })
+    await p.notify()
+    assert.equal(f.one('SELECT status FROM appointments WHERE id=1').status,'cancelled')
+    assert.equal(f.one('SELECT status FROM appointments WHERE id=2').status,'confirmed')
+    assert.equal(f.one('SELECT status FROM availability').status,'confirmed')
+  })
+}
+
+test('confirmation rechecks cancellation inside the transaction, after the appointment read',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  const p=await approvedPayment(f),batch=f.env.DB.batch
+  let first=true
+  f.env.DB.batch=async statements=>{
+    if(first){first=false;f.db.exec("UPDATE appointments SET status='cancelled'; UPDATE availability SET status='free'")}
+    return batch(statements)
+  }
+  await p.notify()
+  assert.equal(f.one('SELECT status FROM appointments').status,'cancelled')
+  assert.equal(f.one('SELECT status FROM availability').status,'free')
+  assert.equal(f.one('SELECT status FROM payments').status,'approved')
+})
+
+for(const slotStatus of ['free','blocked','occupied','confirmed'])test(`payment cannot claim a ${slotStatus} slot`,async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  f.db.prepare('UPDATE availability SET status=?').run(slotStatus)
+  const p=await approvedPayment(f);await p.notify()
+  assert.equal(f.one('SELECT status FROM appointments').status,'pending_payment')
+  assert.equal(f.one('SELECT status FROM availability').status,slotStatus)
+  assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,1)
+})
+
+test('payment cannot take a held slot shared with another active reservation',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  f.db.prepare("INSERT INTO appointments(id,patient_id,availability_id,status,payment_deadline_at) VALUES(2,1,1,'pending_payment',?)").run(iso(day))
+  const p=await approvedPayment(f);await p.notify()
+  assert.equal(f.one('SELECT status FROM appointments WHERE id=1').status,'pending_payment')
+  assert.equal(f.one('SELECT status FROM appointments WHERE id=2').status,'pending_payment')
+  assert.equal(f.one('SELECT status FROM availability').status,'held')
+})
+
+test('recurring payment uses its own deadline, even when created more than 15 minutes ago',async()=>{
+  const f=await fixture();f.appointment(1,{kind:'recurring',deadline:iso(day)})
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-3 days')")
+  const p=await approvedPayment(f);await p.notify()
+  assert.equal(f.one('SELECT status FROM appointments').status,'confirmed')
+  assert.equal(f.one('SELECT reservation_kind FROM appointments').reservation_kind,'recurring')
+})
+
+test('legacy reservation falls back to reserved_until for confirmation',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  f.db.exec('UPDATE appointments SET payment_deadline_at=NULL')
+  const p=await approvedPayment(f);await p.notify()
+  assert.equal(f.one('SELECT status FROM appointments').status,'confirmed')
+})
+
+test('duplicate concurrent approvals do not create a false review alert',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  const p=await approvedPayment(f),batch=f.env.DB.batch
+  // Both requests read pending payment, but D1 serializes their transactions.
+  let queue=Promise.resolve()
+  f.env.DB.batch=statements=>{const result=queue.then(()=>batch(statements));queue=result;return result}
+  await Promise.all([p.notify(),p.notify()])
+  assert.equal(f.one('SELECT status FROM appointments').status,'confirmed')
+  assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,0)
+})
+
+test('legacy payment webhook also cannot reactivate a cancelled reservation',async()=>{
+  const f=await fixture();f.appointment(1,{status:'cancelled'})
+  f.db.exec("UPDATE availability SET status='free'; INSERT INTO payments(id,appointment_id,provider,method,status,amount_cents,external_id) VALUES(1,1,'legacy','pix','pending',10000,'fake-order')")
+  const path='/api/payments/webhook'
+  const response=await worker.fetch(f.req(path,false,{id:'fake-order',status:'approved'}),f.env)
+  assert.equal(response.status,200)
+  assert.equal(f.one('SELECT status FROM appointments').status,'cancelled')
+  assert.equal(f.one('SELECT status FROM availability').status,'free')
+  assert.equal(f.one('SELECT status FROM payments').status,'approved')
+  assert.equal(f.one("SELECT count(*) AS n FROM audit_log WHERE action='payment_approved_requires_review'").n,1)
+})
+
+test('valid confirmation updates Google and sends email once; duplicate callback does neither',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day),event:'existing-event'})
+  const p=await approvedPayment(f);f.google()
+  Object.assign(f.env,{RESEND_API_KEY:'fake',EMAIL_FROM:'test@example.invalid'})
+  const calls=[]
+  globalThis.fetch=async(url,init)=>{
+    calls.push({url:String(url),method:init?.method})
+    if(String(url).includes('api.mercadopago.com'))return Response.json({status:'processed',status_detail:'accredited',total_amount:'100.00',transactions:{payments:[{payment_method:{id:'pix'}}]}})
+    if(String(url).includes('oauth2'))return Response.json({access_token:'fake'})
+    if(String(url).includes('calendar/v3')){assert.equal(init.method,'PATCH');return Response.json({id:'existing-event'})}
+    if(String(url).includes('api.resend.com'))return Response.json({id:'fake-email'})
+    throw Error('Unexpected URL')
+  }
+  await p.notify();await p.notify()
+  assert.equal(calls.filter(c=>c.url.includes('calendar/v3')).length,1)
+  assert.equal(calls.filter(c=>c.url.includes('api.resend.com')).length,1)
+  assert.equal(f.one('SELECT calendar_sync_state FROM appointments').calendar_sync_state,'synced')
 })
