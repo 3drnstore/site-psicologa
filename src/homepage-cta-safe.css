@@ -1,11 +1,11 @@
 .conversation-cta {
-  padding: 84px 4vw;
+  padding: 84px max(24px, calc((100vw - 1180px)/2));
   background: #f3efe3;
 }
 
 .conversation-cta-inner {
   max-width: 980px;
-  margin: 0 auto;
+  margin: 0;
   padding: 54px 58px;
   border: 1px solid #d8d2c3;
   border-radius: 28px;
@@ -35,7 +35,7 @@
 }
 
 @media (max-width: 700px) {
-  .conversation-cta { padding: 64px 20px; }
+  .conversation-cta { padding: 64px 22px; }
   .conversation-cta-inner { padding: 38px 28px; border-radius: 22px; }
   .conversation-cta p { font-size: 16px; }
   .conversation-booking-button { width: 100%; }
