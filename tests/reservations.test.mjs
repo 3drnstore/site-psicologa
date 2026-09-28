@@ -83,14 +83,38 @@ test('expiration cancels, releases, fails pending payment, deletes Google event 
   assert.equal(f.one('SELECT count(*) AS n FROM audit_log').n,1)
 })
 
+test('legacy standard reservation with a stale future deadline still expires 15 minutes after creation',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day),event:'event1'});const calls=f.google()
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-30 minutes')")
+  await expireUnpaidReservations(f.env)
+  const ap=f.one('SELECT status,payment_deadline_at,reserved_until FROM appointments WHERE id=1')
+  assert.equal(ap.status,'cancelled')
+  assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')
+  assert.equal(calls.filter(c=>c.method==='DELETE').length,1)
+  assert.ok(Date.parse(ap.payment_deadline_at)<=Date.now())
+  assert.equal(ap.payment_deadline_at,ap.reserved_until)
+})
+
+test('unexpired standard reservation has its stale deadline corrected to creation plus 15 minutes',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-5 minutes')")
+  await expireUnpaidReservations(f.env)
+  const ap=f.one('SELECT status,created_at,payment_deadline_at,reserved_until FROM appointments WHERE id=1')
+  assert.equal(ap.status,'pending_payment')
+  const created=Date.parse(ap.created_at.replace(' ','T')+'Z')
+  assert.ok(Math.abs(Date.parse(ap.payment_deadline_at)-(created+15*60*1000))<1000)
+  assert.equal(ap.payment_deadline_at,ap.reserved_until)
+})
+
 test('unexpired and confirmed reservations survive; recurring normalization retains 24-hour rule',async()=>{
   const f=await fixture(),starts=iso(7*day)
   f.appointment(1,{deadline:iso(600000)})
   f.appointment(2,{kind:'recurring',starts,deadline:iso(3*day)})
   f.appointment(3,{status:'confirmed'})
-  const standard=f.one('SELECT payment_deadline_at FROM appointments WHERE id=1').payment_deadline_at
   await normalizeHourlyDeadlines(f.env);await expireUnpaidReservations(f.env)
-  assert.equal(f.one('SELECT payment_deadline_at FROM appointments WHERE id=1').payment_deadline_at,standard)
+  const standard=f.one('SELECT created_at,payment_deadline_at FROM appointments WHERE id=1')
+  const created=Date.parse(String(standard.created_at).replace(' ','T')+'Z')
+  assert.ok(Math.abs(Date.parse(standard.payment_deadline_at)-(created+15*60*1000))<1000)
   assert.equal(f.one('SELECT payment_deadline_at FROM appointments WHERE id=2').payment_deadline_at,new Date(Date.parse(starts)-day).toISOString())
   assert.deepEqual(f.db.prepare('SELECT status FROM appointments ORDER BY id').all().map(x=>x.status),['pending_payment','pending_payment','confirmed'])
 })
