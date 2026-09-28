@@ -43,6 +43,11 @@ async function fixture(){
   function appointment(id,{kind='standard',deadline=iso(-1000),status='pending_payment',event=null,starts=iso(7*day)}={}){
     slot(id,starts,status==='confirmed'?'confirmed':'held')
     db.prepare('INSERT INTO appointments(id,patient_id,availability_id,status,amount_cents,reservation_kind,payment_deadline_at,reserved_until,google_calendar_event_id) VALUES(?,1,?,?,10000,?,?,?,?)').run(id,id,status,kind,deadline,deadline,event)
+    // Test fixtures with an already-expired standard deadline represent a
+    // reservation whose 15-minute window elapsed in the past.
+    if(kind==='standard'&&status==='pending_payment'&&Date.parse(deadline)<=Date.now()){
+      db.prepare('UPDATE appointments SET created_at=? WHERE id=?').run(new Date(Date.parse(deadline)-15*60*1000).toISOString(),id)
+    }
     return id
   }
   function google(status=204){
@@ -255,7 +260,7 @@ test('simultaneous Google syncs converge on one deterministic event and expirati
   assert.deepEqual(ids,['portalappt1','portalappt1'])
   assert.equal(postCalls,2)
   assert.equal(f.one('SELECT google_calendar_event_id FROM appointments WHERE id=1').google_calendar_event_id,'portalappt1')
-  f.db.prepare('UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=1').run(iso(-1),iso(-1))
+  f.db.exec("UPDATE appointments SET created_at=datetime('now','-16 minutes')")
   await expireUnpaidReservations(f.env)
   assert.equal(deleteCalls,1)
   assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')
