@@ -61,13 +61,15 @@ function portalEventContent(a:any){
 }
 
 export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number){
-  const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
+  const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.payment_deadline_at,a.reserved_until,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
   if(!appointment||!['pending_payment','confirmed'].includes(String(appointment.status)))return null
+  const deadline=appointment.payment_deadline_at||appointment.reserved_until
+  if(appointment.status==='pending_payment'&&deadline&&new Date(deadline).getTime()<=Date.now())return null
   const token=await accessToken(env);if(!token){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,'Não foi possível obter um access token do Google. Verifique Client ID, Client Secret e Refresh Token.');return null}
   const content=portalEventContent(appointment)
   if(appointment.google_calendar_event_id){
     const eventId=String(appointment.google_calendar_event_id),response=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})
-    if(response.ok){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run().catch(()=>null);await clearAppointmentSyncError(env,appointmentId);return eventId}
+    if(response.ok){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run().catch(()=>null);await clearAppointmentSyncError(env,appointmentId);return await finishAppointmentSync(env,appointmentId,eventId)}
     if(response.status!==404&&response.status!==410){const failure=await googleWriteError(response,'appointment_patch');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
     await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,calendar_sync_state='pending',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
   }
@@ -77,7 +79,42 @@ export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number
   if(!response.ok){const failure=await googleWriteError(response,'appointment_create');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
   const event=await response.json() as any
   if(event.id){await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(event.id,appointmentId).run();await clearAppointmentSyncError(env,appointmentId)}
-  return event.id||null
+  return event.id?await finishAppointmentSync(env,appointmentId,String(event.id)):null
+}
+
+// A cancellation can finish while Google's POST/PATCH is in flight.
+async function finishAppointmentSync(env:Env,appointmentId:number,eventId:string){
+  const current=await env.DB.prepare(`SELECT status,payment_deadline_at,reserved_until FROM appointments WHERE id=?`).bind(appointmentId).first<any>()
+  const deadline=current?.payment_deadline_at||current?.reserved_until
+  if(current&&(!['pending_payment','confirmed'].includes(current.status)||(current.status==='pending_payment'&&deadline&&new Date(deadline).getTime()<=Date.now()))){
+    await removePortalAppointmentFromGoogle(env,appointmentId)
+    return null
+  }
+  return eventId
+}
+
+export async function removePortalAppointmentFromGoogle(env:Env,appointmentId:number):Promise<boolean>{
+  const row=await env.DB.prepare(`SELECT google_calendar_event_id FROM appointments WHERE id=?`).bind(appointmentId).first<any>()
+  if(!row)return true
+  if(!row.google_calendar_event_id){
+    await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='removed',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
+    return true
+  }
+  // Keep the event ID until Google acknowledges deletion so failures can be retried.
+  await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='removal_pending',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
+  try{
+    const token=await accessToken(env)
+    if(!token){await setAppointmentSyncError(env,appointmentId,'Não foi possível obter token para remover o evento.');return false}
+    const response=await fetch(eventUrl(env,String(row.google_calendar_event_id)),{method:'DELETE',headers:{authorization:`Bearer ${token}`}})
+    if(!response.ok&&response.status!==404&&response.status!==410){
+      const failure=await googleWriteError(response,'appointment_remove')
+      await setAppointmentSyncError(env,appointmentId,failure.error||'Falha ao remover evento.')
+      return false
+    }
+    await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,calendar_sync_state='removed',updated_at=CURRENT_TIMESTAMP WHERE id=? AND google_calendar_event_id=?`).bind(appointmentId,row.google_calendar_event_id).run()
+    await clearAppointmentSyncError(env,appointmentId)
+    return true
+  }catch(error){await setAppointmentSyncError(env,appointmentId,error instanceof Error?error.message:String(error));return false}
 }
 
 const availabilityKey=(id:number)=>`${AVAILABILITY_EVENT_KEY}${id}`
@@ -126,15 +163,22 @@ export async function syncPortalAvailabilityToGoogleDetailed(env:Env,id:number):
 export async function syncPortalAvailabilityToGoogle(env:Env,id:number){return (await syncPortalAvailabilityToGoogleDetailed(env,id)).ok}
 
 async function markInactivePortalAppointments(env:Env){
-  await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='inactive' WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed')`).run().catch(()=>null)
+  await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='inactive' WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed') AND COALESCE(calendar_sync_state,'')<>'removal_pending'`).run().catch(()=>null)
 }
 
 export async function retryPendingGoogleCalendarAppointments(env:Env){
+  const removals=await env.DB.prepare(`SELECT id FROM appointments WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND (status IN ('cancelled','expired') OR calendar_sync_state='removal_pending') ORDER BY updated_at ASC LIMIT 25`).all<any>()
+  for(const row of removals.results||[])await removePortalAppointmentFromGoogle(env,Number(row.id))
   const rows=await env.DB.prepare(`SELECT id FROM appointments WHERE status IN ('pending_payment','confirmed') AND (calendar_sync_state IS NULL OR calendar_sync_state='pending') ORDER BY updated_at ASC LIMIT 25`).all<any>()
   let synced=0,failed=0
   for(const row of rows.results||[]){
-    const eventId=await syncPortalAppointmentToGoogle(env,Number(row.id))
-    if(eventId)synced++;else failed++
+    try{
+      const eventId=await syncPortalAppointmentToGoogle(env,Number(row.id))
+      if(eventId)synced++;else failed++
+    }catch(error){
+      failed++
+      await setAppointmentSyncError(env,Number(row.id),error instanceof Error?error.message:String(error))
+    }
   }
   return{attempted:(rows.results||[]).length,synced,failed}
 }

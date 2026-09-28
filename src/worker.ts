@@ -1,4 +1,5 @@
 import { clearCookie, cookie, hashPassword, randomToken, readCookie, sha256, verifyPassword } from './auth'
+import { expireUnpaidReservations } from './session-management'
 import type { Env } from './types'
 
 const PATIENT_COOKIE = 'ps_session'
@@ -70,15 +71,6 @@ async function audit(env: Env, actorType: 'patient' | 'admin' | 'system', actorI
     .bind(crypto.randomUUID(), actorType, actorId == null ? null : String(actorId), action, entityType, entityId == null ? null : String(entityId), metadata ? JSON.stringify(metadata) : null).run()
 }
 
-async function releaseExpiredHolds(env: Env) {
-  const expired = await env.DB.prepare(`SELECT id, availability_id FROM appointments WHERE status = 'pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?`).bind(nowIso()).all<any>()
-  for (const row of expired.results || []) {
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE appointments SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending_payment'`).bind(row.id),
-      env.DB.prepare(`UPDATE availability SET status = 'free', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'held'`).bind(row.availability_id),
-    ])
-  }
-}
 
 async function googleAccessToken(env: Env) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) return null
@@ -252,7 +244,7 @@ async function handlePatientApi(request: Request, env: Env, path: string) {
   if (path === '/api/me' && request.method === 'GET') return json({ ok: true, patient })
 
   if (path === '/api/availability' && request.method === 'GET') {
-    await releaseExpiredHolds(env)
+    await expireUnpaidReservations(env)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || plusDays(60)
@@ -263,7 +255,7 @@ async function handlePatientApi(request: Request, env: Env, path: string) {
   }
 
   if (path === '/api/appointments/reserve' && request.method === 'POST') {
-    await releaseExpiredHolds(env)
+    await expireUnpaidReservations(env)
     const data = await body(request)
     const slotId = Number(data.slot_id)
     if (!slotId) return json({ ok: false, message: 'Horário inválido.' }, 400)
@@ -282,7 +274,7 @@ async function handlePatientApi(request: Request, env: Env, path: string) {
   }
 
   if (path === '/api/appointments/mine' && request.method === 'GET') {
-    await releaseExpiredHolds(env)
+    await expireUnpaidReservations(env)
     const result = await env.DB.prepare(`
       SELECT a.id, a.status, a.amount_cents, a.payment_method, a.reserved_until, a.paid_at, av.starts_at, av.ends_at
       FROM appointments a JOIN availability av ON av.id = a.availability_id
@@ -442,7 +434,7 @@ async function handleAdmin(request: Request, env: Env, path: string) {
   }
 
   if (path === '/api/admin/appointments' && request.method === 'GET') {
-    await releaseExpiredHolds(env)
+    await expireUnpaidReservations(env)
     const result = await env.DB.prepare(`
       SELECT a.id, a.status, a.amount_cents, a.payment_method, a.paid_at, a.reserved_until,
         av.id AS availability_id, av.starts_at, av.ends_at,

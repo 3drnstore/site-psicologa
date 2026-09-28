@@ -43,7 +43,7 @@ function showPix(result:any,appointmentId:number){
         setTimeout(()=>{overlay.remove();openSessions('Agendamento confirmado!')},400)
         return
       }
-      if(r.appointment?.status==='cancelled'){
+      if(['cancelled','expired'].includes(r.appointment?.status)){
         if(status)status.textContent='A reserva foi cancelada porque o prazo de pagamento terminou.'
         closed=true
         setTimeout(()=>{overlay.remove();openSessions()},800)
@@ -102,9 +102,9 @@ function sessionRow(a:any){
 }
 
 function historyRow(a:any){
-  const cancelled=a.status==='cancelled'
-  const note=cancelled?(a.workflow_state==='payment_deadline_missed'?'Pagamento não realizado até o prazo.':a.workflow_state==='admin_cancelled'?'Cancelada pela profissional.':(a.cancellation_reason||'Consulta cancelada.')):''
-  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${note?`<small>${esc(note)}</small>`:''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${cancelled?'cancelled':'confirmed'}">${cancelled?'Cancelada':'Confirmada'}</span></div></article>`
+  const cancelled=['cancelled','expired'].includes(a.status)
+  const note=cancelled?((a.status==='expired'||a.workflow_state==='payment_deadline_missed')?'Pagamento não realizado até o prazo.':a.workflow_state==='admin_cancelled'?'Cancelada pela profissional.':(a.cancellation_reason||'Consulta cancelada.')):''
+  return `<article class="patient-consult-row"><div><strong>${esc(dateLong(a.starts_at))}</strong><span>${esc(timeOnly(a.starts_at))}</span>${note?`<small>${esc(note)}</small>`:''}</div><div class="patient-consult-actions"><span class="patient-consult-status ${cancelled?'cancelled':'confirmed'}">${a.status==='expired'?'Expirada':cancelled?'Cancelada':'Confirmada'}</span></div></article>`
 }
 
 let sessionRenderBusy=false
@@ -119,12 +119,12 @@ async function renderReliablePatientSessions(){
   try{
     const data=await api('/api/appointments/mine'),all:any[]=data.appointments||[],now=Date.now()
     const future=all.filter(a=>new Date(a.ends_at||a.starts_at).getTime()>=now&&['confirmed','pending_payment'].includes(a.status)).sort((a,b)=>new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime())
-    const history=all.filter(a=>a.status==='cancelled'||(a.status==='confirmed'&&new Date(a.ends_at||a.starts_at).getTime()<now)).sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
+    const history=all.filter(a=>['cancelled','expired'].includes(a.status)||(a.status==='confirmed'&&new Date(a.ends_at||a.starts_at).getTime()<now)).sort((a,b)=>new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime())
     const key=JSON.stringify(future.map(a=>[a.id,a.status,a.workflow_state,a.reservation_kind,a.starts_at,a.payment_deadline_at,a.reserved_until]))
     if(first.dataset.patientFlowKey!==key||first.dataset.finalPatientSessions!=='1'){
       first.dataset.patientFlowKey=key
       first.dataset.finalPatientSessions='1'
-      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Pagamento, confirmação e reagendamento seguem o limite de 24 horas antes da sessão</small></div>${future.length?future.map(a=>sessionRow(a)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
+      first.innerHTML=`<div class="patient-panel-head"><strong>Próxima sessão</strong><small>Reservas comuns: pagamento em até 15 minutos. Recorrentes: consulte o prazo da reserva. Reagendamento: até 24 horas antes da sessão.</small></div>${future.length?future.map(a=>sessionRow(a)).join(''):'<p class="patient-empty">Você não possui sessão futura confirmada.</p>'}`
     }
     if(historyPanel){
       const historyKey=JSON.stringify(history.map(a=>[a.id,a.status,a.workflow_state,a.starts_at,a.cancellation_reason]))
