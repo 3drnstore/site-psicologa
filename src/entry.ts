@@ -25,6 +25,7 @@ import { handleHealthApi } from './health-api'
 import { protectApiRequest } from './api-protection'
 import { ensureSchemaReady } from './schema-bootstrap'
 import { handleSessionManagement, runScheduledSessionTasks } from './session-management'
+import { retryPendingGoogleCalendarAppointments } from './google-calendar-sync'
 import { handleRecurringCheckout } from './recurring-checkout'
 import { touchRecurrence, reconcileAllRecurrences } from './recurrence-reconcile'
 import { handleClinicalApi } from './clinical-api'
@@ -148,6 +149,6 @@ export default {
     catch (error) { console.error('Schema/bootstrap error:', error instanceof Error ? error.message : String(error)); return withSecurityHeaders(apiError('O sistema está temporariamente indisponível. Tente novamente em alguns instantes.'), path) }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await normalizeHourlyDeadlines(env); await runScheduledSessionTasks(env); await runEmailNotificationTasks(env) })())
+    ctx.waitUntil((async()=>{ await ensureSchemaReady(env); await reconcileAllRecurrences(env); await normalizeHourlyDeadlines(env); await retryPendingGoogleCalendarAppointments(env); await runScheduledSessionTasks(env); await runEmailNotificationTasks(env) })())
   },
 }

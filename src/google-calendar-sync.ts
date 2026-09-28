@@ -14,6 +14,12 @@ async function accessToken(env:Env){
   if(!response.ok)return null
   return String(((await response.json())as any).access_token||'')||null
 }
+async function setAppointmentSyncError(env:Env,appointmentId:number,error:string){
+  await setSetting(env,`google_calendar_sync_error:${appointmentId}`,error.slice(0,500)).catch(()=>null)
+}
+async function clearAppointmentSyncError(env:Env,appointmentId:number){
+  await env.DB.prepare(`DELETE FROM settings WHERE key=?`).bind(`google_calendar_sync_error:${appointmentId}`).run().catch(()=>null)
+}
 const calendarId=(env:Env)=>encodeURIComponent(env.GOOGLE_CALENDAR_ID||'primary')
 const eventUrl=(env:Env,eventId?:string)=>`https://www.googleapis.com/calendar/v3/calendars/${calendarId(env)}/events${eventId?`/${encodeURIComponent(eventId)}`:''}`
 
@@ -57,18 +63,20 @@ function portalEventContent(a:any){
 export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number){
   const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
   if(!appointment||!['pending_payment','confirmed'].includes(String(appointment.status)))return null
-  const token=await accessToken(env);if(!token){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);return null}
+  const token=await accessToken(env);if(!token){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,'Não foi possível obter um access token do Google. Verifique Client ID, Client Secret e Refresh Token.');return null}
   const content=portalEventContent(appointment)
   if(appointment.google_calendar_event_id){
     const eventId=String(appointment.google_calendar_event_id),response=await fetch(eventUrl(env,eventId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})
-    if(response.ok){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run().catch(()=>null);return eventId}
-    if(response.status!==404&&response.status!==410){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);return null}
+    if(response.ok){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run().catch(()=>null);await clearAppointmentSyncError(env,appointmentId);return eventId}
+    if(response.status!==404&&response.status!==410){const failure=await googleWriteError(response,'appointment_patch');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
     await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,calendar_sync_state='pending',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
   }
-  const response=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})
-  if(!response.ok){await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);return null}
+  let response:Response
+  try{response=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})}
+  catch(error:any){const message=String(error?.message||'Falha de rede ao criar evento no Google Calendar.');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,message);return null}
+  if(!response.ok){const failure=await googleWriteError(response,'appointment_create');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
   const event=await response.json() as any
-  if(event.id)await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(event.id,appointmentId).run()
+  if(event.id){await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(event.id,appointmentId).run();await clearAppointmentSyncError(env,appointmentId)}
   return event.id||null
 }
 
@@ -119,6 +127,16 @@ export async function syncPortalAvailabilityToGoogle(env:Env,id:number){return (
 
 async function markInactivePortalAppointments(env:Env){
   await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='inactive' WHERE google_calendar_event_id IS NOT NULL AND google_calendar_event_id<>'' AND status NOT IN ('pending_payment','confirmed')`).run().catch(()=>null)
+}
+
+export async function retryPendingGoogleCalendarAppointments(env:Env){
+  const rows=await env.DB.prepare(`SELECT id FROM appointments WHERE status IN ('pending_payment','confirmed') AND (calendar_sync_state IS NULL OR calendar_sync_state='pending') ORDER BY updated_at ASC LIMIT 25`).all<any>()
+  let synced=0,failed=0
+  for(const row of rows.results||[]){
+    const eventId=await syncPortalAppointmentToGoogle(env,Number(row.id))
+    if(eventId)synced++;else failed++
+  }
+  return{attempted:(rows.results||[]).length,synced,failed}
 }
 
 export async function syncGoogleCalendarAvailability(env:Env,from:string,to:string,force=false){
