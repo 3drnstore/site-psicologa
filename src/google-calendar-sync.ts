@@ -59,6 +59,15 @@ function portalEventContent(a:any){
   const confirmed=String(a.status)==='confirmed'
   return{summary:confirmed?`Sessão – ${a.full_name} (Confirmada)`:`Reserva – ${a.full_name} (Pendente de pagamento)`,description:confirmed?`Sessão confirmada pelo portal. Contato: ${a.phone||a.email||''}.`:`Horário reservado pelo portal e aguardando confirmação de pagamento. Contato: ${a.phone||a.email||''}.`,start:{dateTime:a.starts_at,timeZone:'America/Sao_Paulo'},end:{dateTime:a.ends_at,timeZone:'America/Sao_Paulo'},extendedProperties:{private:{portal_source:'site-psicologa',portal_kind:'appointment',appointment_id:String(a.id)}}}
 }
+function appointmentEventId(appointmentId:number){return `portalappt${Math.trunc(appointmentId)}`}
+async function deleteGoogleEventById(env:Env,token:string,eventId:string,appointmentId?:number){
+  try{
+    const response=await fetch(eventUrl(env,eventId),{method:'DELETE',headers:{authorization:`Bearer ${token}`}})
+    if(response.ok||response.status===404||response.status===410)return true
+    if(appointmentId){const failure=await googleWriteError(response,'appointment_orphan_remove');await setAppointmentSyncError(env,appointmentId,failure.error||'Falha ao remover evento duplicado do Google.')}
+  }catch(error){if(appointmentId)await setAppointmentSyncError(env,appointmentId,error instanceof Error?error.message:String(error))}
+  return false
+}
 
 export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number){
   const appointment=await env.DB.prepare(`SELECT a.id,a.status,a.payment_deadline_at,a.reserved_until,a.google_calendar_event_id,av.starts_at,av.ends_at,p.full_name,p.email,p.phone FROM appointments a JOIN availability av ON av.id=a.availability_id JOIN patients p ON p.id=a.patient_id WHERE a.id=?`).bind(appointmentId).first<any>()
@@ -73,13 +82,24 @@ export async function syncPortalAppointmentToGoogle(env:Env,appointmentId:number
     if(response.status!==404&&response.status!==410){const failure=await googleWriteError(response,'appointment_patch');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
     await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=NULL,calendar_sync_state='pending',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(appointmentId).run()
   }
+  const deterministicId=appointmentEventId(appointmentId)
+  const createContent={...content,id:deterministicId}
   let response:Response
-  try{response=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)})}
+  try{response=await fetch(eventUrl(env),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(createContent)})}
   catch(error:any){const message=String(error?.message||'Falha de rede ao criar evento no Google Calendar.');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,message);return null}
+  if(response.status===409){
+    const patch=await fetch(eventUrl(env,deterministicId),{method:'PATCH',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(content)}).catch(()=>null)
+    if(!patch?.ok){if(patch){const failure=await googleWriteError(patch,'appointment_recover_existing');await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`)}await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);return null}
+    await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(deterministicId,appointmentId).run()
+    await clearAppointmentSyncError(env,appointmentId)
+    return await finishAppointmentSync(env,appointmentId,deterministicId)
+  }
   if(!response.ok){const failure=await googleWriteError(response,'appointment_create');await env.DB.prepare(`UPDATE appointments SET calendar_sync_state='pending' WHERE id=?`).bind(appointmentId).run().catch(()=>null);await setAppointmentSyncError(env,appointmentId,`${failure.stage}: ${failure.error||'erro desconhecido'}`);return null}
-  const event=await response.json() as any
-  if(event.id){await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(event.id,appointmentId).run();await clearAppointmentSyncError(env,appointmentId)}
-  return event.id?await finishAppointmentSync(env,appointmentId,String(event.id)):null
+  const event=await response.json().catch(()=>({})) as any
+  const eventId=String(event.id||deterministicId)
+  await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(eventId,appointmentId).run()
+  await clearAppointmentSyncError(env,appointmentId)
+  return await finishAppointmentSync(env,appointmentId,eventId)
 }
 
 // A cancellation can finish while Google's POST/PATCH is in flight.
@@ -207,7 +227,25 @@ export async function syncGoogleCalendarAvailability(env:Env,from:string,to:stri
   let importedGoogleEvents=0
 
   for(const event of events){
-    const eventId=String(event.id||'');if(!eventId||localIds.has(eventId))continue
+    const eventId=String(event.id||'');if(!eventId)continue
+    const privateProps=event?.extendedProperties?.private||{}
+    if(String(privateProps.portal_source||'')==='site-psicologa'&&String(privateProps.portal_kind||'')==='appointment'){
+      const appointmentId=Number(privateProps.appointment_id)
+      if(Number.isInteger(appointmentId)&&appointmentId>0){
+        const local=await env.DB.prepare(`SELECT status,payment_deadline_at,reserved_until,google_calendar_event_id FROM appointments WHERE id=?`).bind(appointmentId).first<any>()
+        const deadline=local?.payment_deadline_at||local?.reserved_until
+        const active=!!local&&['pending_payment','confirmed'].includes(String(local.status))&&!(local.status==='pending_payment'&&deadline&&new Date(deadline).getTime()<=Date.now())
+        const mapped=String(local?.google_calendar_event_id||'')
+        if(!active||(mapped&&mapped!==eventId)){
+          await deleteGoogleEventById(env,token,eventId,local?appointmentId:undefined)
+        }else if(!mapped){
+          await env.DB.prepare(`UPDATE appointments SET google_calendar_event_id=?,calendar_sync_state='synced',updated_at=CURRENT_TIMESTAMP WHERE id=? AND (google_calendar_event_id IS NULL OR google_calendar_event_id='')`).bind(eventId,appointmentId).run()
+          localIds.add(eventId)
+        }
+      }
+      continue
+    }
+    if(localIds.has(eventId))continue
     const range=eventRange(event);if(!range)continue
     const summary=String(event.summary||'Compromisso no Google').trim().slice(0,240)||'Compromisso no Google'
     labelWrites.push(env.DB.prepare(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(`${GOOGLE_SUMMARY_KEY}${eventId}`,summary))

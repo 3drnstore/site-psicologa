@@ -14,10 +14,11 @@ const { normalizeHourlyDeadlines }=await import('../src/hour-policy.ts')
 const { handlePatientReserveV2 }=await import('../src/patient-reserve-v2.ts')
 const { handlePublicAvailabilityV3 }=await import('../src/public-availability-v3.ts')
 const { handleScheduleV2 }=await import('../src/schedule-v2.ts')
-const { removePortalAppointmentFromGoogle, retryPendingGoogleCalendarAppointments, syncPortalAppointmentToGoogle }=await import('../src/google-calendar-sync.ts')
+const { removePortalAppointmentFromGoogle, retryPendingGoogleCalendarAppointments, syncPortalAppointmentToGoogle, syncGoogleCalendarAvailability }=await import('../src/google-calendar-sync.ts')
 const { sha256 }=await import('../src/auth.ts')
 const { handlePaymentsV2 }=await import('../src/payments-v2.ts')
 const { default: worker }=await import('../src/worker.ts')
+const { handleFinanceStatement }=await import('../src/finance-statement.ts')
 const realFetch=globalThis.fetch
 afterEach(()=>{globalThis.fetch=realFetch})
 const iso=offset=>new Date(Date.now()+offset).toISOString()
@@ -205,6 +206,57 @@ test('cancellation during Google event creation removes the newly created event'
   assert.equal(f.one('SELECT google_calendar_event_id FROM appointments').google_calendar_event_id,null)
 })
 
+test('simultaneous Google syncs converge on one deterministic event and expiration removes it',async()=>{
+  const f=await fixture();f.appointment(1,{deadline:iso(day)})
+  Object.assign(f.env,{GOOGLE_CLIENT_ID:'fake',GOOGLE_CLIENT_SECRET:'fake',GOOGLE_REFRESH_TOKEN:'fake'})
+  let exists=false,postCalls=0,deleteCalls=0,waiting=0,release
+  const gate=new Promise(resolve=>{release=resolve})
+  globalThis.fetch=async(url,init={})=>{
+    const u=String(url)
+    if(u.includes('oauth2'))return Response.json({access_token:'fake'})
+    if(init.method==='POST'&&u.endsWith('/events')){
+      postCalls+=1
+      const body=JSON.parse(String(init.body||'{}'))
+      assert.equal(body.id,'portalappt1')
+      waiting+=1;if(waiting===2)release()
+      await gate
+      if(!exists){exists=true;return Response.json({id:'portalappt1'})}
+      return Response.json({error:{message:'Already exists'}},{status:409})
+    }
+    if(init.method==='PATCH'&&u.endsWith('/events/portalappt1'))return Response.json({id:'portalappt1'})
+    if(init.method==='DELETE'&&u.endsWith('/events/portalappt1')){deleteCalls+=1;exists=false;return new Response(null,{status:204})}
+    throw Error('Unexpected Google request: '+u+' '+String(init.method||'GET'))
+  }
+  const ids=await Promise.all([syncPortalAppointmentToGoogle(f.env,1),syncPortalAppointmentToGoogle(f.env,1)])
+  assert.deepEqual(ids,['portalappt1','portalappt1'])
+  assert.equal(postCalls,2)
+  assert.equal(f.one('SELECT google_calendar_event_id FROM appointments WHERE id=1').google_calendar_event_id,'portalappt1')
+  f.db.prepare('UPDATE appointments SET payment_deadline_at=?,reserved_until=? WHERE id=1').run(iso(-1),iso(-1))
+  await expireUnpaidReservations(f.env)
+  assert.equal(deleteCalls,1)
+  assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')
+  assert.equal(f.one('SELECT google_calendar_event_id FROM appointments WHERE id=1').google_calendar_event_id,null)
+})
+
+test('orphan portal appointment event is deleted and never imported back as occupied availability',async()=>{
+  const f=await fixture();f.appointment(1,{status:'cancelled',deadline:iso(day)})
+  f.db.exec("UPDATE availability SET status='free',source='manual'; UPDATE appointments SET google_calendar_event_id=NULL,calendar_sync_state='removed'")
+  const range=f.one('SELECT starts_at,ends_at FROM availability WHERE id=1')
+  Object.assign(f.env,{GOOGLE_CLIENT_ID:'fake',GOOGLE_CLIENT_SECRET:'fake',GOOGLE_REFRESH_TOKEN:'fake'})
+  let deleted=0
+  globalThis.fetch=async(url,init={})=>{
+    const u=String(url)
+    if(u.includes('oauth2'))return Response.json({access_token:'fake'})
+    if(init.method==='DELETE'&&u.endsWith('/events/orphan-event')){deleted+=1;return new Response(null,{status:204})}
+    if(!init.method&&u.includes('/events?'))return Response.json({items:[{id:'orphan-event',summary:'Reserva antiga',transparency:'opaque',start:{dateTime:range.starts_at},end:{dateTime:range.ends_at},extendedProperties:{private:{portal_source:'site-psicologa',portal_kind:'appointment',appointment_id:'1'}}}]})
+    throw Error('Unexpected Google request: '+u+' '+String(init.method||'GET'))
+  }
+  await syncGoogleCalendarAvailability(f.env,iso(-day),iso(10*day),true)
+  assert.equal(deleted,1)
+  assert.equal(f.one('SELECT status FROM availability WHERE id=1').status,'free')
+  assert.equal(f.one('SELECT source FROM availability WHERE id=1').source,'manual')
+})
+
 test('a deadline extended between selection and cleanup is rechecked before cancellation',async()=>{
   const f=await fixture();f.appointment(1)
   const batch=f.env.DB.batch
@@ -331,6 +383,22 @@ for(const provider of ['mercadopago','infinitepay']){
     assert.equal(f.one('SELECT status FROM availability').status,'confirmed')
   })
 }
+
+test('late approved payment appears in the finance statement as a review item',async()=>{
+  const f=await fixture();f.appointment(1)
+  const p=await approvedPayment(f,'mercadopago');await p.notify()
+  const path='/api/admin/finance-statement'
+  const response=await handleFinanceStatement(f.req(path,true),f.env,path)
+  assert.equal(response.status,200)
+  const data=await response.json()
+  const review=data.events.find(event=>event.kind==='review')
+  assert.ok(review)
+  assert.equal(review.amount_cents,10000)
+  assert.equal(data.review_cents,10000)
+  assert.equal(data.received_cents,10000)
+  assert.equal(data.net_cents,10000)
+  assert.match(review.description,/Revisar/i)
+})
 
 test('confirmation rechecks cancellation inside the transaction, after the appointment read',async()=>{
   const f=await fixture();f.appointment(1,{deadline:iso(day)})
