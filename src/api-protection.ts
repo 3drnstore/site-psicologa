@@ -6,7 +6,7 @@ const EXTERNAL_WEBHOOKS=new Set([
   '/api/payments/webhook/infinitepay',
 ])
 const MAX_BODY_BYTES=64*1024
-const LARGE_UPLOAD_LIMITS=new Map<string,number>([['/api/admin/patient-manual',8*1024*1024+256*1024]])
+const LARGE_UPLOAD_LIMITS=new Map<string,number>([['/api/admin/patient-manual',8*1024*1024+256*1024],['/api/admin/site-photo',5*1024*1024+256*1024]])
 
 export function protectApiRequest(request:Request,path:string):Response|null{
   if(!path.startsWith('/api/'))return null

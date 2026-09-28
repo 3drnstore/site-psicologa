@@ -23,8 +23,9 @@ async function syncCalendarEvent(env:Env,appointmentId:number){
 }
 
 export async function normalizeHourlyDeadlines(env:Env){
-  const rows=await env.DB.prepare(`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment'`).all<any>()
-  for(const row of rows.results||[]){const deadline=minusHours(String(row.starts_at),24);await env.DB.prepare(`UPDATE appointments SET reserved_until=?,payment_deadline_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(deadline,deadline,row.id).run()}
+  // Only recurring reservations use the existing 24-hour normalization policy.
+  const rows=await env.DB.prepare(`SELECT a.id,av.starts_at FROM appointments a JOIN availability av ON av.id=a.availability_id WHERE a.status='pending_payment' AND a.reservation_kind='recurring'`).all<any>()
+  for(const row of rows.results||[]){const deadline=minusHours(String(row.starts_at),24);await env.DB.prepare(`UPDATE appointments SET reserved_until=?,payment_deadline_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment' AND reservation_kind='recurring'`).bind(deadline,deadline,row.id).run()}
 }
 
 async function handleRecurrencePut(request:Request,env:Env,path:string){

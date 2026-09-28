@@ -35,6 +35,7 @@ import { handleHourlyPolicy, normalizeHourlyDeadlines } from './hour-policy'
 import { handleReceitaSaude } from './receita-saude'
 import { handleFinanceStatement } from './finance-statement'
 import { handlePatientManual } from './patient-manual-api'
+import { handleSitePhoto } from './site-photo-api'
 import type { Env } from './types'
 
 const apiError = (message: string) => new Response(JSON.stringify({ ok: false, message }), {
@@ -75,6 +76,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
   await ensureSchemaReady(env)
   const health = await handleHealthApi(request, env, path); if (health) return health
+  const sitePhoto = await handleSitePhoto(request, env, path); if (sitePhoto) return sitePhoto
 
   if (path === '/api/contact') {
     try { const response = await handleContactApi(request, env, path); if (response) return response }

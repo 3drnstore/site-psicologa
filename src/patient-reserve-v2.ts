@@ -2,11 +2,11 @@ import { readCookie, sha256 } from './auth'
 import { pricingForOrigin } from './platform-pricing'
 import { sendReservationCreatedEmail } from './email-notifications'
 import { syncPortalAppointmentToGoogle } from './google-calendar-sync'
+import { expireUnpaidReservations } from './session-management'
 import type { Env } from './types'
 
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8'}})
 const nowIso=()=>new Date().toISOString()
-const minusHoursIso=(v:string,hours:number)=>new Date(new Date(v).getTime()-hours*3600000).toISOString()
 
 async function patient(request:Request,env:Env){
   const token=readCookie(request,'ps_session')
@@ -19,29 +19,32 @@ export async function handlePatientReserveV2(request:Request,env:Env,path:string
   try{
     const p=await patient(request,env);if(!p)return json({ok:false,message:'Faça login para continuar.'},401)
     const data=await request.json().catch(()=>({})) as any,slotId=Number(data.slot_id);if(!slotId)return json({ok:false,message:'Horário inválido.'},400)
+    await expireUnpaidReservations(env)
     const existing=await env.DB.prepare(`SELECT a.id,a.amount_cents,a.reserved_until,a.payment_deadline_at,a.status FROM appointments a WHERE a.patient_id=? AND a.availability_id=? AND a.status='pending_payment' ORDER BY a.id DESC LIMIT 1`).bind(p.id,slotId).first<any>()
-    if(existing&&(!existing.payment_deadline_at||new Date(existing.payment_deadline_at).getTime()>Date.now())){
+    const existingDeadline=existing?.payment_deadline_at||existing?.reserved_until
+    if(existing&&existingDeadline&&new Date(existingDeadline).getTime()>Date.now()){
       await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
       await syncPortalAppointmentToGoogle(env,Number(existing.id)).catch(()=>null)
-      await sendReservationCreatedEmail(env,Number(existing.id))
+      await sendReservationCreatedEmail(env,Number(existing.id)).catch(()=>null)
       return json({ok:true,appointment_id:Number(existing.id),reserved_until:existing.reserved_until,payment_deadline_at:existing.payment_deadline_at||existing.reserved_until,amount_cents:Number(existing.amount_cents||0),reused:true},200)
     }
     const slot=await env.DB.prepare(`SELECT id,starts_at,status FROM availability WHERE id=?`).bind(slotId).first<any>()
     if(!slot||slot.status!=='free')return json({ok:false,message:'Esse horário não está mais disponível.'},409)
     const startsAt=new Date(String(slot.starts_at));if(Number.isNaN(startsAt.getTime()))return json({ok:false,message:'Este horário possui uma data inválida. Atualize a agenda e tente novamente.'},409)
     if(startsAt.getTime()<=Date.now())return json({ok:false,message:'Esse horário já passou e não pode mais ser reservado.'},409)
-    const paymentDeadline=minusHoursIso(String(slot.starts_at),24)
-    if(new Date(paymentDeadline).getTime()<=Date.now())return json({ok:false,message:'As reservas pelo portal precisam ser feitas com mais de 24 horas de antecedência para permitir o pagamento no prazo.'},409)
+    const paymentDeadline=new Date(Date.now()+15*60*1000).toISOString()
     const pricing=await pricingForOrigin(env,p.pricing_origin,'card'),amount=Math.max(0,Number(pricing.consultation_price_cents)||0)
     if(amount<=0)return json({ok:false,message:'O valor da sessão ainda não foi configurado pela profissional.'},409)
     const hold=await env.DB.prepare(`UPDATE availability SET status='held' WHERE id=? AND status='free'`).bind(slotId).run()
     if(!Number(hold.meta.changes||0))return json({ok:false,message:'Esse horário acabou de ser reservado por outra pessoa.'},409)
+    let appointmentId:number
     try{
       const result=await env.DB.prepare(`INSERT INTO appointments (patient_id,availability_id,status,amount_cents,reserved_until,payment_deadline_at,reservation_kind,workflow_state) VALUES (?,?,'pending_payment',?,?,?,'standard','awaiting_payment')`).bind(p.id,slotId,amount,paymentDeadline,paymentDeadline).run()
-      const appointmentId=Number(result.meta.last_row_id)
-      await syncPortalAppointmentToGoogle(env,appointmentId).catch(()=>null)
-      await sendReservationCreatedEmail(env,appointmentId)
-      return json({ok:true,appointment_id:appointmentId,reserved_until:paymentDeadline,payment_deadline_at:paymentDeadline,amount_cents:amount,pricing_origin:pricing.origin},201)
+      appointmentId=Number(result.meta.last_row_id)
     }catch(error){await env.DB.prepare(`UPDATE availability SET status='free' WHERE id=? AND status='held'`).bind(slotId).run();throw error}
+    // External notification failures must not release an already persisted reservation.
+    await syncPortalAppointmentToGoogle(env,appointmentId).catch(()=>null)
+    await sendReservationCreatedEmail(env,appointmentId).catch(()=>null)
+    return json({ok:true,appointment_id:appointmentId,reserved_until:paymentDeadline,payment_deadline_at:paymentDeadline,amount_cents:amount,pricing_origin:pricing.origin},201)
   }catch(error){console.error('Patient reserve error:',error instanceof Error?error.message:String(error));return json({ok:false,message:'Não foi possível reservar este horário agora.'},500)}
 }

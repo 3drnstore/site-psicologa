@@ -1,5 +1,6 @@
 import { readCookie, sha256 } from './auth'
 import { syncGoogleCalendarAvailability } from './google-calendar-sync'
+import { expireUnpaidReservations } from './session-management'
 import type { Env } from './types'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
@@ -23,16 +24,6 @@ async function tableExists(env: Env, name: string) {
   return Boolean(await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>())
 }
 
-async function releaseExpired(env: Env) {
-  if (!(await tableExists(env, 'appointments'))) return
-  const rows = await env.DB.prepare(`SELECT id,availability_id FROM appointments WHERE status='pending_payment' AND reserved_until IS NOT NULL AND reserved_until < ?`).bind(nowIso()).all<any>()
-  for (const row of rows.results || []) {
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE appointments SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending_payment'`).bind(row.id),
-      env.DB.prepare(`UPDATE availability SET status='free',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='held'`).bind(row.availability_id),
-    ])
-  }
-}
 
 function dateParts(value: string) {
   const [y,m,d] = value.split('-').map(Number)
@@ -89,7 +80,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
   if (path === '/api/availability' && request.method === 'GET') {
     const p = await patient(request, env)
     if (!p) return json({ ok:false,message:'Faça login para continuar.' },401)
-    await releaseExpired(env)
+    await expireUnpaidReservations(env)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || new Date(Date.now()+60*86400000).toISOString()
@@ -111,6 +102,7 @@ export async function handleScheduleV2(request: Request, env: Env, path: string)
   if (!a) return null
 
   if (path === '/api/admin/availability-v2' && request.method === 'GET') {
+    await expireUnpaidReservations(env)
     const url = new URL(request.url)
     const from = url.searchParams.get('from') || nowIso()
     const to = url.searchParams.get('to') || new Date(Date.now()+730*86400000).toISOString()
