@@ -114,6 +114,24 @@ export async function handleAdminSecurity(request:Request,env:Env,path:string):P
     return json({ok:true,message:'Novo acesso cadastrado.',user:{id,email,display_name:displayName,role,active:1}},201)
   }
   const match=path.match(/^\/api\/admin\/users\/([^/]+)$/)
+  if(match&&request.method==='DELETE'){
+    const state=await requirePsychologist(request,env);if(state.error)return state.error
+    const id=decodeURIComponent(match[1])
+    if(id===state.admin.id)return json({ok:false,message:'Você não pode excluir seu próprio acesso administrativo.'},409)
+    const target=await env.DB.prepare('SELECT id,email,display_name,role,active FROM admin_users WHERE id=?').bind(id).first<any>()
+    if(!target)return json({ok:false,message:'Usuário não encontrado.'},404)
+    const b=await body(request)
+    if(b.confirmation!=='EXCLUIR USUÁRIO')return json({ok:false,message:'Confirme a exclusão do usuário.'},400)
+    // A condição no DELETE preserva uma conta administradora ativa mesmo com solicitações simultâneas.
+    const results=await env.DB.batch([
+      env.DB.prepare(`DELETE FROM admin_users WHERE id=? AND (role<>'psychologist' OR active<>1 OR EXISTS (SELECT 1 FROM admin_users other WHERE other.id<>? AND other.role='psychologist' AND other.active=1))`).bind(id,id),
+      env.DB.prepare('DELETE FROM admin_sessions WHERE admin_user_id=? AND NOT EXISTS (SELECT 1 FROM admin_users WHERE id=?)').bind(id,id),
+      env.DB.prepare("DELETE FROM password_reset_tokens WHERE account_type='admin' AND account_id=? AND NOT EXISTS (SELECT 1 FROM admin_users WHERE id=?)").bind(id,id),
+      env.DB.prepare(`INSERT INTO audit_log (id,actor_type,actor_id,action,entity_type,entity_id,metadata_json) SELECT ?,'admin',?,'admin_user_deleted','admin_user',?,? WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE id=?)`).bind(crypto.randomUUID(),state.admin.id,id,JSON.stringify({role:target.role,email:target.email,display_name:target.display_name}),id),
+    ])
+    if(Number(results[0].meta.changes||0)!==1)return json({ok:false,message:'É necessário manter pelo menos uma conta Psicóloga / Administrador ativa.'},409)
+    return json({ok:true,message:'Usuário excluído. O acesso e as sessões foram encerrados.'})
+  }
   if(match&&request.method==='PATCH'){
     const state=await requirePsychologist(request,env);if(state.error)return state.error
     const id=decodeURIComponent(match[1]),b=await body(request),target=await env.DB.prepare('SELECT id,email,display_name,role,active FROM admin_users WHERE id=?').bind(id).first<any>();if(!target)return json({ok:false,message:'Usuário não encontrado.'},404)
